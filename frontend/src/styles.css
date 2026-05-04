@@ -40,17 +40,19 @@ body::before {
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  padding: 28px 32px 36px;
-  gap: 20px;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  padding: 20px 24px 20px;
+  gap: 16px;
+  box-sizing: border-box;
 }
 
 .app-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  animation: floatIn 600ms ease-out;
 }
 
 .title {
@@ -79,32 +81,31 @@ body::before {
 
 .app-body {
   display: grid;
-  grid-template-columns: 320px 1fr 340px;
-  gap: 22px;
+  grid-template-columns: 320px 1fr 360px;
+  grid-template-rows: 1fr;
+  gap: 16px;
   flex: 1;
   min-height: 0;
-}
-
-.panel,
-.canvas {
-  background: var(--panel);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
 .panel {
-  padding: 18px 18px 14px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  animation: floatIn 750ms ease-out;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
 }
 
 .canvas {
-  position: relative;
-  min-height: 520px;
-  animation: floatIn 850ms ease-out;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
 }
 
 .chat {
@@ -116,6 +117,7 @@ body::before {
 .canvas-wrap {
   width: 100%;
   height: 100%;
+  min-height: 0;
 }
 
 .chat-header {
@@ -157,11 +159,12 @@ body::before {
 
 .chat-messages {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-right: 6px;
+  gap: 10px;
+  padding-right: 4px;
 }
 
 .chat-empty {
@@ -336,7 +339,11 @@ body::before {
 }
 
 .output-panel {
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .preview-panel {
@@ -377,10 +384,11 @@ body::before {
 }
 
 .preview-iframe {
+  flex: 1;
   width: 100%;
-  height: calc(100% - 56px);
-  border-radius: 12px;
-  background: #fff;
+  border: 0;
+  border-radius: 10px;
+  min-height: 0;
 }
 
 .output-panel .chat-header {
@@ -416,11 +424,12 @@ body::before {
 
 .output-list {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding-right: 6px;
+  padding-right: 4px;
 }
 
 .output-card {

@@ -80,9 +80,7 @@ export default function ChatPanel() {
     setSelectedTemplate(template);
   };
 
-  const chatMessages = messages.filter(
-    (m) => m.role === "user" || m.role === "supervisor"
-  );
+  const chatMessages = messages;
 
   const handleSend = () => {
     const trimmed = draft.trim();

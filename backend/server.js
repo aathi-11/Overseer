@@ -71,11 +71,11 @@ function extractHTML(text) {
   if (bodyMatch) return `<!DOCTYPE html>\n<html>\n${bodyMatch[0]}\n</html>`;
 
   // Fallback: fenced code block with html language
-  const htmlCodeBlock = raw.match(/```html\n([\s\S]*?)(?:```|$)/i);
+  const htmlCodeBlock = raw.match(/```html\s*\n([\s\S]*?)(?:```|$)/i);
   if (htmlCodeBlock && htmlCodeBlock[1]) return htmlCodeBlock[1].trim();
 
   // Fallback: Any other code block, wrap in styled <pre> so it still shows up
-  const anyCodeBlock = raw.match(/```(?:\w+)?\n([\s\S]*?)(?:```|$)/i);
+  const anyCodeBlock = raw.match(/```(?:\w+)?\s*\n([\s\S]*?)(?:```|$)/i);
   if (anyCodeBlock && anyCodeBlock[1]) {
     const code = anyCodeBlock[1].replace(/</g, "&lt;").replace(/>/g, "&gt;");
     return `<!DOCTYPE html>\n<html>\n<body style="background:#1e1e1e;color:#d4d4d4;padding:20px;font-family:monospace;white-space:pre-wrap;">${code}</body>\n</html>`;
@@ -229,6 +229,19 @@ function startServer() {
             input: text,
             memory: currentMemory,
             onStep: async (step) => {
+              // If this is the Implement step, try to extract HTML and emit preview
+              try {
+                if (/implement/i.test(step.title || "")) {
+                  const html = extractHTML(step.content);
+                  if (html) {
+                    socket.emit("app_preview", { html, label: step.title || "Implement" });
+                  }
+                }
+              } catch (err) {
+                // non-fatal; continue
+                console.warn("app_preview extraction error:", err && err.message ? err.message : err);
+              }
+
               const content = cleanOutput(step.content);
               saveGeneratedCode(content, step.title);
               outputs.push({ role: "developer", title: step.title, content });
@@ -241,19 +254,6 @@ function startServer() {
                   content,
                 })
               );
-
-              // If this is the Implement step, try to extract HTML and emit preview
-              try {
-                if (/implement/i.test(step.title || "")) {
-                  const html = extractHTML(step.content) || extractHTML(content);
-                  if (html) {
-                    socket.emit("app_preview", { html, label: step.title || "Implement" });
-                  }
-                }
-              } catch (err) {
-                // non-fatal; continue
-                console.warn("app_preview extraction error:", err && err.message ? err.message : err);
-              }
             },
           });
           devResults.forEach((r) => {
