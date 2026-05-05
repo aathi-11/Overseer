@@ -36,6 +36,21 @@ function saveGeneratedCode(content, title) {
     fs.writeFileSync(filepath, code, "utf8");
     index++;
   }
+  // If no fenced code blocks were found, try to extract raw HTML and save it
+  if (index === 1) {
+    try {
+      const html = extractHTML(content);
+      if (html) {
+        const timestamp = Date.now();
+        const safeTitle = (title || "output").replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+        const filename = `code_${safeTitle}_${timestamp}_1.html`;
+        const filepath = path.join(OUTPUT_DIR, filename);
+        fs.writeFileSync(filepath, html, "utf8");
+      }
+    } catch (err) {
+      console.warn("saveGeneratedCode: html extraction failed:", err && err.message ? err.message : err);
+    }
+  }
 }
 
 function cleanOutput(text) {
@@ -223,8 +238,8 @@ function startServer() {
         const route = decision.route || "developer";
 
         let needsReq = route === "requirements";
-        let needsDev = route === "requirements" || route === "developer" || route === "both";
-        let needsTest = route === "requirements" || route === "tester" || route === "both";
+        let needsDev = route === "developer" || route === "both";
+        let needsTest = route === "tester" || route === "both";
 
         let currentMemory = [...memory];
 

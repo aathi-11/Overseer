@@ -37,12 +37,18 @@ async function queryRAG(query, nResults = 3) {
 async function storeRAG(id, content, metadata = {}) {
     try {
         if (!content || content.trim().length < 10) return { stored: false };
+        const MAX_LEN = 6000;
+        let storeContent = content;
+        if (content.length > MAX_LEN) {
+            console.warn(`[RAG] content truncated from ${content.length} to ${MAX_LEN} chars for id: ${id}`);
+            storeContent = content.slice(0, MAX_LEN);
+        }
         const res = await fetchWithTimeout(
             `${RAG_URL}/store`,
             {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id, content: content.slice(0, 2000), metadata }),
+                body: JSON.stringify({ id, content: storeContent, metadata }),
             },
             RAG_TIMEOUT_MS
         );

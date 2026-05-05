@@ -26,7 +26,9 @@ async function callOllamaChat({
     throw new Error(`Ollama error: ${response.status} ${errorText}`);
   }
 
-  const data = await response.json();
+  const data = await response.json().catch(() => {
+    throw new Error("Ollama returned non-JSON");
+  });
   return (data.message && data.message.content ? data.message.content : "").trim();
 }
 

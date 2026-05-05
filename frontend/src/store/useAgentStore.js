@@ -69,6 +69,7 @@ export const useAgentStore = create((set, get) => ({
   lastAgentNodeId: null,
   lastInputId: null,
   lastDecisionId: null,
+  lastRagId: null,
   onNodesChange: (changes) => {
     set({
       nodes: applyNodeChanges(changes, get().nodes),
@@ -140,7 +141,15 @@ export const useAgentStore = create((set, get) => ({
       };
 
       const edges = [...state.edges];
-      if (payload.type === "decision" && state.lastInputId) {
+      if (payload.type === "decision" && (state.lastRagId || state.lastInputId)) {
+        const src = state.lastRagId || state.lastInputId;
+        edges.push({
+          id: `e-${src}-${payload.id}`,
+          source: src,
+          target: payload.id,
+        });
+      }
+      if (payload.type === "rag" && state.lastInputId) {
         edges.push({
           id: `e-${state.lastInputId}-${payload.id}`,
           source: state.lastInputId,
@@ -202,6 +211,7 @@ export const useAgentStore = create((set, get) => ({
           payload.type === "input" ? payload.id : state.lastInputId,
         lastDecisionId:
           payload.type === "decision" ? payload.id : state.lastDecisionId,
+        lastRagId: payload.type === "rag" ? payload.id : state.lastRagId,
       };
     });
   },
