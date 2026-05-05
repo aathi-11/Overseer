@@ -5,10 +5,11 @@ import { applyNodeChanges } from "reactflow";
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3001";
 const LANE_X = {
   input: 80,
-  decision: 320,
-  requirements: 560,
-  developer: 800,
-  tester: 1040,
+  rag: 240,
+  decision: 400,
+  requirements: 600,
+  developer: 840,
+  tester: 1080,
 };
 const LANE_GAP_Y = 220;
 
@@ -25,6 +26,7 @@ function getLane(payload) {
   if (payload.role === "tester") {
     return "tester";
   }
+  if (payload.role === "rag") return "rag";
   return "developer";
 }
 
@@ -35,6 +37,7 @@ function getNodeType(payload) {
   if (payload.type === "decision") {
     return "decisionNode";
   }
+  if (payload.type === "rag") return "ragNode";
   return "agentNode";
 }
 
@@ -49,6 +52,7 @@ export const useAgentStore = create((set, get) => ({
   agentOutputs: [],
   laneCounts: {
     input: 0,
+    rag: 0,
     decision: 0,
     requirements: 0,
     developer: 0,
@@ -56,6 +60,7 @@ export const useAgentStore = create((set, get) => ({
   },
   lastNodeByLane: {
     input: null,
+    rag: null,
     decision: null,
     requirements: null,
     developer: null,

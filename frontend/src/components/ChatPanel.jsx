@@ -7,6 +7,16 @@ const ROLE_LABELS = {
   requirements: "Requirements Analyst",
   developer: "Developer",
   tester: "Tester",
+  rag: "RAG Memory",
+};
+
+const ROLE_COLORS = {
+  user: "#7c3aed",
+  supervisor: "#0f766e",
+  requirements: "#2563eb",
+  developer: "#16a34a",
+  tester: "#ef4444",
+  rag: "#f59e0b",
 };
 
 const TEMPLATES = [

@@ -4,6 +4,7 @@ import { useAgentStore } from "../store/useAgentStore.js";
 import InputNode from "./nodes/InputNode.jsx";
 import DecisionNode from "./nodes/DecisionNode.jsx";
 import AgentNode from "./nodes/AgentNode.jsx";
+import RagNode from "./nodes/RagNode.jsx";
 
 export default function AgentCanvas() {
   const nodes = useAgentStore((state) => state.nodes);
@@ -15,6 +16,7 @@ export default function AgentCanvas() {
       inputNode: InputNode,
       decisionNode: DecisionNode,
       agentNode: AgentNode,
+      ragNode: RagNode,
     }),
     []
   );

@@ -5,9 +5,11 @@ Supervisor Agent SDLC Canvas is a local AI workflow simulator. A client requirem
 ## What It Does
 
 - Accepts a short feature request, bug description, or test request from the chat panel
-- Uses a Supervisor agent to route the request
+- **Agentic RAG**: Automatically retrieves relevant past context or patterns from a vector database before processing
+- Uses a Supervisor agent to route the request based on the enriched context
 - Runs one or more SDLC-style agent workflows through Ollama
-- Shows each stage as a visual node on the canvas
+- Shows each stage as a visual node on the canvas, including RAG memory hits
+- **Persistent Memory**: Saves session summaries into vector storage for future retrieval across sessions
 - Keeps the conversation and node flow in memory for the current browser session
 
 The backend currently includes these workflows:
@@ -20,7 +22,8 @@ The backend currently includes these workflows:
 
 - Frontend: React 18, Vite, React Flow, Zustand, Socket.IO client
 - Backend: Node.js, Express, Socket.IO
-- AI: Ollama via the local `/api/chat` endpoint
+- **RAG Server**: Python, FastAPI, ChromaDB (Vector DB)
+- AI: Ollama via the local `/api/chat` and `/api/embeddings` endpoints
 
 The default model is `phi3`, but you can override it with environment variables.
 
@@ -34,6 +37,7 @@ If you do not already have a model, pull one before running the app:
 ```bash
 ollama serve
 ollama pull phi3
+ollama pull nomic-embed-text
 ```
 
 ## Install
@@ -50,14 +54,27 @@ npm install
 
 ## Run the App
 
-Start the backend in one terminal:
+Start the RAG server (Python):
+
+```bash
+cd rag
+pip install -r requirements.txt
+uvicorn rag_server:app --port 8000 --reload
+```
+
+(Optional) Seed the RAG server with starter knowledge:
+
+```bash
+cd rag
+python seed_knowledge.py
+```
+
+Start the backend in another terminal:
 
 ```bash
 cd backend
 npm run dev
 ```
-
-The server listens on port `3001` by default.
 
 Start the frontend in another terminal:
 
@@ -102,6 +119,11 @@ Examples you can try:
 ## Project Structure
 
 ```text
+rag/
+  rag_server.py
+  seed_knowledge.py
+  requirements.txt
+
 frontend/
   src/
     App.jsx
@@ -109,13 +131,14 @@ frontend/
       ChatPanel.jsx
       AgentCanvas.jsx
       nodes/
+        RagNode.jsx
     store/
       useAgentStore.js
 
 backend/
   server.js
-  routes/chat.js
   agents/
+    ragClient.js
     supervisorAgent.js
     requirementsAgent.js
     developerAgent.js

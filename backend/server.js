@@ -10,6 +10,7 @@ const { supervisorAgent } = require("./agents/supervisorAgent");
 const { runRequirementsWorkflow } = require("./agents/requirementsAgent");
 const { runDeveloperWorkflow } = require("./agents/developerAgent");
 const { runTesterWorkflow } = require("./agents/testerAgent");
+const { queryRAG, storeRAG, buildRAGContext } = require("./agents/ragClient");
 
 const PORT = process.env.PORT || 3001;
 const MEMORY_LIMIT = 8;
@@ -180,7 +181,34 @@ function startServer() {
         });
         socket.emit("node:add", inputNode);
 
-        const decision = await supervisorAgent({ input: text, memory });
+        // RAG: retrieve relevant context before routing
+        let enrichedText = text;
+        let ragChunksFound = 0;
+        try {
+          const ragResult = await queryRAG(text, 3);
+          ragChunksFound = ragResult.found || 0;
+          if (ragChunksFound > 0) {
+            const ragContext = buildRAGContext(ragResult.chunks);
+            enrichedText = ragContext + "User Request: " + text;
+            socket.emit("node:add", createNodePayload({
+              type: "rag",
+              role: "rag",
+              title: "RAG: " + ragChunksFound + " memory chunk" + (ragChunksFound !== 1 ? "s" : "") + " retrieved",
+              content: ragResult.chunks.map((c, i) => "[" + (i + 1) + "] " + c).join("\n\n"),
+            }));
+          } else {
+            socket.emit("node:add", createNodePayload({
+              type: "rag",
+              role: "rag",
+              title: "RAG: No memory yet",
+              content: "No relevant past context found. Agents will rely on model knowledge only.",
+            }));
+          }
+        } catch (ragErr) {
+          console.warn("[RAG] retrieval error (non-fatal):", ragErr.message);
+        }
+
+        const decision = await supervisorAgent({ input: enrichedText, memory });
         const decisionNode = createNodePayload({
           type: "decision",
           role: "supervisor",
@@ -202,7 +230,7 @@ function startServer() {
 
         if (needsReq) {
           const reqResults = await runRequirementsWorkflow({
-            input: text,
+            input: enrichedText,
             memory: currentMemory,
             onStep: async (step) => {
               const content = cleanOutput(step.content);
@@ -226,7 +254,7 @@ function startServer() {
 
         if (needsDev) {
           const devResults = await runDeveloperWorkflow({
-            input: text,
+            input: enrichedText,
             memory: currentMemory,
             onStep: async (step) => {
               // If this is the Implement step, try to extract HTML and emit preview
@@ -263,7 +291,7 @@ function startServer() {
 
         if (needsTest) {
           await runTesterWorkflow({
-            input: text,
+            input: enrichedText,
             memory: currentMemory,
             onStep: async (step) => {
               const content = cleanOutput(step.content);
@@ -288,6 +316,22 @@ function startServer() {
         }
 
         socket.data.memory = trimMemory(memory);
+
+        // RAG: store this session's summary into vector memory for future sessions
+        try {
+          if (summary && summary.trim().length > 20) {
+            const storeId = "session-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+            await storeRAG(storeId, summary, {
+              route: route,
+              input: text.slice(0, 120),
+              timestamp: new Date().toISOString(),
+            });
+            console.log("[RAG] stored session summary, id:", storeId);
+          }
+        } catch (storeErr) {
+          console.warn("[RAG] store session error (non-fatal):", storeErr.message);
+        }
+
         socket.emit("chat:done", { ok: true });
       } catch (error) {
         socket.emit("chat:error", {
