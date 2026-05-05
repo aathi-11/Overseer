@@ -2,7 +2,12 @@ const { callOllamaChat } = require("./ollamaClient");
 
 const SUPERVISOR_SYSTEM =
   "You are a Supervisor Agent for a local SDLC simulator. " +
-  "Decide whether a request should go to requirements, developer, tester, or both. " +
+  "Decide the best route for the user request using these rules:\n" +
+  "- 'developer': user wants to BUILD, CREATE, MAKE, or GENERATE something (e.g. 'build a login page', 'make a todo app', 'create a calculator'). This is the most common route.\n" +
+  "- 'tester': user wants tests, test cases, QA, or bug reports written.\n" +
+  "- 'requirements': user ONLY wants to gather or document requirements, user stories, or specs — not build anything.\n" +
+  "- 'both': user wants BOTH requirements AND implementation together.\n" +
+  "When in doubt for any 'build/create/make' request, always choose 'developer'.\n" +
   "Return JSON only in the shape {\"route\":\"requirements|developer|tester|both\",\"reason\":\"short sentence\"}.";
 
 function parseDecision(text) {
@@ -25,8 +30,8 @@ function parseDecision(text) {
   }
 
   const lowered = text.toLowerCase();
-  const mentionsReq = lowered.includes("requirement") || lowered.includes("gather");
-  const mentionsDev = lowered.includes("developer") || lowered.includes("develop");
+  const mentionsReq = lowered.includes("requirement") || lowered.includes("gather") || lowered.includes("user stor");
+  const mentionsDev = lowered.includes("developer") || lowered.includes("develop") || lowered.includes("build") || lowered.includes("creat") || lowered.includes("implement") || lowered.includes("generat");
   const mentionsTest = lowered.includes("tester") || lowered.includes("test");
   let route = "developer";
 
@@ -49,10 +54,20 @@ async function supervisorAgent({ input, memory }) {
     messages.push({ role: "user", content: input });
   }
 
+  const buildKeywords = /\b(build|create|make|generate|write|develop|implement|code|design)\b/i;
+  const testKeywords = /\b(test|spec|qa|bug|edge case)\b/i;
+  const reqKeywords = /\b(requirement|user stor|gather|document|spec)\b/i;
+
+  let hint = "";
+  if (buildKeywords.test(input) && !reqKeywords.test(input)) {
+    hint = " The user wants to BUILD something — route should be 'developer'.";
+  } else if (testKeywords.test(input)) {
+    hint = " The user wants tests — route should be 'tester'.";
+  }
+
   messages.push({
     role: "user",
-    content:
-      "Decide the route for the latest request. Reply with JSON only.",
+    content: `Decide the route for the latest request.${hint} Reply with JSON only.`,
   });
 
   const response = await callOllamaChat({

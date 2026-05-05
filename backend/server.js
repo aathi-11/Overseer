@@ -55,6 +55,9 @@ function saveGeneratedCode(content, title) {
 
 function cleanOutput(text) {
   const rawText = String(text || "");
+  if (/<(!DOCTYPE|html|body|head)\b/i.test(rawText)) {
+    return rawText.trim();
+  }
   const cleanedLines = rawText
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -272,12 +275,17 @@ function startServer() {
             input: enrichedText,
             memory: currentMemory,
             onStep: async (step) => {
-              // If this is the Implement step, try to extract HTML and emit preview
+              const isImplement = /implement/i.test(step.title || "");
+              let content;
+
               try {
-                if (/implement/i.test(step.title || "")) {
+                if (isImplement) {
                   const html = extractHTML(step.content);
                   if (html) {
                     socket.emit("app_preview", { html, label: step.title || "Implement" });
+                    content = `${html.slice(0, 300)}\n\n[Full HTML — see live preview →]`;
+                  } else {
+                    content = "[Model returned no HTML — try rephrasing]";
                   }
                 }
               } catch (err) {
@@ -285,8 +293,11 @@ function startServer() {
                 console.warn("app_preview extraction error:", err && err.message ? err.message : err);
               }
 
-              const content = cleanOutput(step.content);
-              saveGeneratedCode(content, step.title);
+              if (!content) {
+                content = cleanOutput(step.content);
+              }
+
+              saveGeneratedCode(step.content, step.title);
               outputs.push({ role: "developer", title: step.title, content });
               socket.emit(
                 "node:add",
