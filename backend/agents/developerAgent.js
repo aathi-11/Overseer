@@ -1,20 +1,6 @@
 const { callOllamaChat } = require("./ollamaClient");
 const { delay } = require("../utils/delay");
-
-const DEV_SYSTEM =
-  "Answer only if you are certain. If unsure, say 'I don't know'. Do not make up facts.\n" +
-  "You are the Developer Agent in a lightweight SDLC. " +
-  "Write concise, practical guidance for the requested step. " +
-  "Limit to 150 words. Use plain text, no markdown.";
-
-const DEV_SYSTEM_IMPLEMENT =
-  "You are the Developer Agent. Output a complete, working, single-file HTML application only.\n" +
-  "Rules:\n" +
-  "- Start with <!DOCTYPE html> and end with </html>.\n" +
-  "- All CSS goes in <style> in <head>; all JS goes in <script> at the end of <body>.\n" +
-  "- No external JS libraries or CDNs.\n" +
-  "- No markdown, no comments, no placeholders, no ellipses.\n" +
-  "- Ensure the UI looks modern and the logic works end-to-end.";
+const { DEV_SYSTEM, DEV_SYSTEM_IMPLEMENT } = require("../config/prompts");
 
 const DEV_STEPS = ["System Design", "Implement", "Code Review"];
 

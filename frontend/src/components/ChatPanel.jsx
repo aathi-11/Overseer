@@ -47,7 +47,17 @@ export default function ChatPanel() {
     setSelectedTemplate(template);
   };
 
-  const chatMessages = messages;
+  const shouldShowInChat = (message) => {
+    if (!message || !message.role) return false;
+    if (message.role === "user") return true;
+    if (message.role !== "supervisor") return false;
+
+    const title = String(message.title || "").toLowerCase();
+    const content = String(message.content || "").toLowerCase();
+    return title.includes("question") || content.includes("?");
+  };
+
+  const chatMessages = messages.filter(shouldShowInChat);
 
   const handleSend = () => {
     const trimmed = draft.trim();

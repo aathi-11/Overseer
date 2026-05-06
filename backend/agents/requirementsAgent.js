@@ -1,11 +1,6 @@
 const { callOllamaChat } = require("./ollamaClient");
 const { delay } = require("../utils/delay");
-
-const REQ_SYSTEM =
-  "Answer only if you are certain. If unsure, say 'I don't know'. Do not make up facts.\n" +
-  "You are the Requirements Agent in a lightweight SDLC. " +
-  "Write concise user stories and requirements for the requested feature. " +
-  "Limit to 150 words. Use plain text, no markdown.";
+const { REQ_SYSTEM } = require("../config/prompts");
 
 const REQ_STEPS = ["Analyze Needs", "Draft User Stories", "Finalize Requirements"];
 

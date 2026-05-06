@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculator</title>
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at top, #fdf2e9 0%, #f7ece0 45%, #efe1d6 100%);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: #1f1f1f;
+    }
+    .calc {
+      width: min(360px, 92vw);
+      background: #ffffff;
+      border-radius: 18px;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+    }
+    .title {
+      font-size: 22px;
+      font-weight: 600;
+      text-align: center;
+    }
+    #display {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 24px;
+      border-radius: 12px;
+      border: 1px solid #e3d8cf;
+      background: #fffaf6;
+      text-align: right;
+      box-sizing: border-box;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    button {
+      padding: 14px 0;
+      font-size: 18px;
+      border: none;
+      border-radius: 10px;
+      background: #f4ebe4;
+      cursor: pointer;
+      transition: transform 0.08s ease, background 0.2s ease;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    .op {
+      background: #ffdfc7;
+    }
+    .eq {
+      background: #f2a65a;
+      color: #ffffff;
+      grid-column: span 2;
+    }
+    .clear {
+      background: #ffd2cc;
+    }
+  </style>
+</head>
+<body>
+  <div class="calc">
+    <div class="title">Simple Calculator</div>
+    <input id="display" type="text" value="0" readonly />
+    <div class="grid">
+      <button onclick="appendNumber('7')">7</button>
+      <button onclick="appendNumber('8')">8</button>
+      <button onclick="appendNumber('9')">9</button>
+      <button class="op" onclick="setOperator('/')">/</button>
+
+      <button onclick="appendNumber('4')">4</button>
+      <button onclick="appendNumber('5')">5</button>
+      <button onclick="appendNumber('6')">6</button>
+      <button class="op" onclick="setOperator('*')">*</button>
+
+      <button onclick="appendNumber('1')">1</button>
+      <button onclick="appendNumber('2')">2</button>
+      <button onclick="appendNumber('3')">3</button>
+      <button class="op" onclick="setOperator('-')">-</button>
+
+      <button onclick="appendNumber('0')">0</button>
+      <button onclick="appendDot()">.</button>
+      <button class="op" onclick="setOperator('+')">+</button>
+      <button class="clear" onclick="clearDisplay()">C</button>
+
+      <button class="eq" onclick="calculateResult()">=</button>
+    </div>
+  </div>
+
+  <script>
+    let current = "0";
+    let stored = null;
+    let op = null;
+
+    function updateDisplay() {
+      document.getElementById("display").value = current;
+    }
+
+    function appendNumber(num) {
+      if (current === "0") {
+        current = num;
+      } else {
+        current += num;
+      }
+      updateDisplay();
+    }
+
+    function appendDot() {
+      if (!current.includes(".")) {
+        current += ".";
+        updateDisplay();
+      }
+    }
+
+    function setOperator(nextOp) {
+      if (stored === null) {
+        stored = parseFloat(current);
+      } else if (op) {
+        stored = compute(stored, parseFloat(current), op);
+      }
+      op = nextOp;
+      current = "0";
+      updateDisplay();
+    }
+
+    function calculateResult() {
+      if (stored === null || !op) return;
+      const result = compute(stored, parseFloat(current), op);
+      current = String(result);
+      stored = null;
+      op = null;
+      updateDisplay();
+    }
+
+    function clearDisplay() {
+      current = "0";
+      stored = null;
+      op = null;
+      updateDisplay();
+    }
+
+    function compute(a, b, operator) {
+      if (operator === "+") return a + b;
+      if (operator === "-") return a - b;
+      if (operator === "*") return a * b;
+      if (operator === "/") return b === 0 ? 0 : a / b;
+      return b;
+    }
+  </script>
+</body>
+</html>

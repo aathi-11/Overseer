@@ -1,54 +1,59 @@
 const { callOllamaChat } = require("./ollamaClient");
+const { SUPERVISOR_SYSTEM } = require("../config/prompts");
 
-const SUPERVISOR_SYSTEM =
-  "You are a routing agent for a local SDLC simulator. " +
-  "Pick ONE route: requirements, developer, tester, both, or clarify.\n" +
-  "Use clarify if the request is under 4 words, a greeting, or unclear. " +
-  "If you choose clarify, the reason must be a specific question.\n" +
-  "Return JSON only: {\"route\":\"requirements|developer|tester|both|clarify\",\"reason\":\"...\"}.";
+function isVagueRequest(input) {
+  const text = String(input || "").trim().toLowerCase();
+  if (!text) return true;
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  if (wordCount < 4) return true;
+  if (/^(hi|hello|hey|yo|sup|start|go|help)$/i.test(text)) return true;
+  if (/\b(build|make|create|do|design)\s+something\b/i.test(text)) return true;
+  return false;
+}
+
+// SUPERVISOR_SYSTEM is sourced from config.
 
 function parseDecision(text) {
   if (!text) {
-    return { route: "developer", reason: "Default route" };
+    return { route: "requirements", reason: "Default fallback" };
   }
 
   const cleaned = String(text)
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
 
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (match) {
+  const matches = cleaned.match(/\{[\s\S]*?\}/g) || [];
+  for (let i = matches.length - 1; i >= 0; i -= 1) {
     try {
-      const parsed = JSON.parse(match[0]);
+      const parsed = JSON.parse(matches[i]);
       const routeRaw = String(parsed.route || "").toLowerCase();
       const reason = String(parsed.reason || parsed.rationale || "").trim();
       if (routeRaw === "requirements" || routeRaw === "developer" || routeRaw === "tester" || routeRaw === "both" || routeRaw === "clarify") {
         return { route: routeRaw, reason: reason || "AI decision" };
       }
     } catch (error) {
-      // Fallback to heuristic parsing below.
+      // Continue searching other JSON blocks.
     }
   }
 
-  const lowered = cleaned.toLowerCase();
-  const mentionsReq = lowered.includes("requirement") || lowered.includes("gather") || lowered.includes("user stor");
-  const mentionsDev = lowered.includes("developer") || lowered.includes("develop") || lowered.includes("build") || lowered.includes("creat") || lowered.includes("implement") || lowered.includes("generat");
-  const mentionsTest = lowered.includes("tester") || lowered.includes("test");
-  let route = "developer";
-
-  if (mentionsReq) {
-    route = "requirements";
-  } else if (mentionsDev && mentionsTest) {
-    route = "both";
-  } else if (mentionsTest) {
-    route = "tester";
+  const routeMatch = cleaned.match(/route\s*[:=]\s*"?(requirements|developer|tester|both|clarify)"?/i);
+  if (routeMatch) {
+    return { route: routeMatch[1].toLowerCase(), reason: "Parsed route from text" };
   }
 
-  return { route, reason: cleaned.trim().slice(0, 180) };
+  // Default fallback to avoid system crash
+  return { route: "requirements", reason: "Fallback route due to parsing failure" };
 }
 
 async function supervisorAgent({ input, memory }) {
+  if (isVagueRequest(input)) {
+    return {
+      route: "clarify",
+      reason: "What would you like to build? Please name a specific app and key features.",
+    };
+  }
   const safeMemory = Array.isArray(memory) ? memory : [];
   const messages = [{ role: "system", content: SUPERVISOR_SYSTEM }, ...safeMemory];
 
