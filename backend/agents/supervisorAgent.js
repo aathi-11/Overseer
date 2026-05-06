@@ -1,14 +1,16 @@
 const { callOllamaChat } = require("./ollamaClient");
 
 const SUPERVISOR_SYSTEM =
+  "Answer only if you are certain. If unsure, say 'I don't know' or use the 'clarify' route. Do not make up facts.\n" +
   "You are a Supervisor Agent for a local SDLC simulator. " +
   "Decide the best route for the user request using these rules:\n" +
-  "- 'developer': user wants to BUILD, CREATE, MAKE, or GENERATE something (e.g. 'build a login page', 'make a todo app', 'create a calculator'). This is the most common route.\n" +
-  "- 'tester': user wants tests, test cases, QA, or bug reports written.\n" +
-  "- 'requirements': user ONLY wants to gather or document requirements, user stories, or specs — not build anything.\n" +
-  "- 'both': user wants BOTH requirements AND implementation together.\n" +
-  "When in doubt for any 'build/create/make' request, always choose 'developer'.\n" +
-  "Return JSON only in the shape {\"route\":\"requirements|developer|tester|both\",\"reason\":\"short sentence\"}.";
+  "- 'developer': user wants to BUILD, CREATE, or GENERATE a specific named feature (e.g. 'calculator', 'todo app', 'login page').\n" +
+  "- 'tester': user wants tests or bug reports.\n" +
+  "- 'requirements': user wants documentation/specs.\n" +
+  "- 'both': user wants requirements and implementation.\n" +
+  "- 'clarify': Use this if the prompt is under 4 words, is a greeting, or is vague like 'make something', 'start', or 'go'. If you choose this, the 'reason' MUST be a specific question (e.g. 'What kind of application would you like me to build?').\n" +
+  "STRICT RULE: If you don't know EXACTLY what to build, you MUST choose 'clarify'. Never guess.\n" +
+  "Return JSON: {\"route\":\"requirements|developer|tester|both|clarify\",\"reason\":\"...\"}";
 
 function parseDecision(text) {
   if (!text) {
@@ -21,7 +23,7 @@ function parseDecision(text) {
       const parsed = JSON.parse(match[0]);
       const routeRaw = String(parsed.route || "").toLowerCase();
       const reason = String(parsed.reason || parsed.rationale || "").trim();
-      if (routeRaw === "requirements" || routeRaw === "developer" || routeRaw === "tester" || routeRaw === "both") {
+      if (routeRaw === "requirements" || routeRaw === "developer" || routeRaw === "tester" || routeRaw === "both" || routeRaw === "clarify") {
         return { route: routeRaw, reason: reason || "AI decision" };
       }
     } catch (error) {

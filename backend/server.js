@@ -39,7 +39,7 @@ function saveGeneratedCode(content, title) {
   // If no fenced code blocks were found, try to extract raw HTML and save it
   if (index === 1) {
     try {
-      const html = extractHTML(content);
+      const html = sanitizeHTML(extractHTML(content));
       if (html) {
         const timestamp = Date.now();
         const safeTitle = (title || "output").replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
@@ -54,47 +54,101 @@ function saveGeneratedCode(content, title) {
 }
 
 function cleanOutput(text) {
-  const rawText = String(text || "");
+  let rawText = String(text || "");
+  
+  // Apply junk pattern removal to ALL output
+  const JUNK_PATTERNS = [
+    /\[HTML generated\]/gi,
+    /\[Code Review\].*/gi,
+    /\[System Design\].*/gi,
+    /\{"name":\s*".*"\}/gi, // Strip JSON-like objects
+    /end of (the )?(html )?(head|body|style|script|content).*/gi,
+    /(start|beginning) of (the )?(html )?(head|body|style|script|content).*/gi,
+    /\.\.\.\s*(rest|more|continue|add|insert|include|styles?|scripts?|code|content).*/gi,
+    /(rest|remainder) of (the )?(html|code|styles?|scripts?|content).*/gi,
+    /(add|insert|place|put) (your )?(styles?|scripts?|content|html|code) here.*/gi,
+    /html (head|body) (content|section) (ends?|starts?|here).*/gi,
+    /\[?\s*(truncated|abbreviated|shortened|omitted|etc\.?)\s*\]?/gi,
+    /^\s*\.\.\.\s*$/m, // bare ellipsis line
+  ];
+
+  for (const pattern of JUNK_PATTERNS) {
+    rawText = rawText.replace(pattern, "");
+  }
+
   if (/<(!DOCTYPE|html|body|head)\b/i.test(rawText)) {
     return rawText.trim();
   }
+
   const cleanedLines = rawText
     .split(/\r?\n/)
-    .map((line) => line.trim())
     .filter((line) => {
-      if (!line) {
-        return true;
-      }
-      if (/^\[.*?\]/.test(line)) {
-        return false;
-      }
-      if (/^(as the|i am the) .* agent[:,-]?\s*/i.test(line)) {
-        return false;
-      }
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      if (/^\[.*?\]/.test(trimmed)) return false;
+      if (/^(as the|i am the) .* agent[:,-]?\s*/i.test(trimmed)) return false;
       return true;
     });
 
   return cleanedLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function sanitizeHTML(html) {
+  if (!html) return html;
+
+  // More aggressive patterns that can match anywhere in a line
+  const JUNK_PATTERNS = [
+    /\[HTML generated\]/gi,
+    /\{"name":\s*".*"\}/gi,
+    /end of (the )?(html )?(head|body|style|script|content).*/gi,
+    /(start|beginning) of (the )?(html )?(head|body|style|script|content).*/gi,
+    /\.\.\.\s*(rest|more|continue|add|insert|include|styles?|scripts?|code|content).*/gi,
+    /(rest|remainder) of (the )?(html|code|styles?|scripts?|content).*/gi,
+    /(add|insert|place|put) (your )?(styles?|scripts?|content|html|code) here.*/gi,
+    /html (head|body) (content|section) (ends?|starts?|here).*/gi,
+    /\[?\s*(truncated|abbreviated|shortened|omitted|etc\.?)\s*\]?/gi,
+  ];
+
+  let cleaned = html;
+  for (const pattern of JUNK_PATTERNS) {
+    cleaned = cleaned.replace(pattern, "");
+  }
+
+  return cleaned
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      if (/^\s*\.\.\.\s*$/.test(trimmed)) return false; // bare ellipsis
+      if (/^<!--[\s\S]*?-->$/.test(trimmed)) return false; // single line comment
+      return true;
+    })
+    .join("\n")
+    .replace(/<!--[\s\S]*?-->/g, "") // multi-line comments
+    .replace(/```\w*/g, "") // Any leftover backticks
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function extractHTML(text) {
   const raw = String(text || "");
-  // Look for full DOCTYPE HTML
+  
+  // 1. Try to find a clean fenced HTML block first
+  const htmlCodeBlock = raw.match(/```html\s*\n([\s\S]*?)(?:\n```|$)/i);
+  if (htmlCodeBlock && htmlCodeBlock[1]) return htmlCodeBlock[1].trim();
+
+  // 2. Look for full DOCTYPE HTML
   const doctypeMatch = raw.match(/<!DOCTYPE html>[\s\S]*?(?:<\/html>|$)/i);
   if (doctypeMatch) return doctypeMatch[0];
 
-  // Fallback: any <html>...</html> or <body>...</body>
+  // 3. Fallback: any <html>...</html> or <body>...</body>
   const htmlTagMatch = raw.match(/<html[\s\S]*?(?:<\/html>|$)/i);
   if (htmlTagMatch) return htmlTagMatch[0];
   const bodyMatch = raw.match(/<body[\s\S]*?(?:<\/body>|$)/i);
   if (bodyMatch) return `<!DOCTYPE html>\n<html>\n${bodyMatch[0]}\n</html>`;
 
-  // Fallback: fenced code block with html language
-  const htmlCodeBlock = raw.match(/```html\s*\n([\s\S]*?)(?:```|$)/i);
-  if (htmlCodeBlock && htmlCodeBlock[1]) return htmlCodeBlock[1].trim();
-
-  // Fallback: Any other code block, wrap in styled <pre> so it still shows up
-  const anyCodeBlock = raw.match(/```(?:\w+)?\s*\n([\s\S]*?)(?:```|$)/i);
+  // 4. Fallback: Any other code block, wrap it
+  const anyCodeBlock = raw.match(/```(?:\w+)?\s*\n([\s\S]*?)(?:\n```|$)/i);
   if (anyCodeBlock && anyCodeBlock[1]) {
     const code = anyCodeBlock[1].replace(/</g, "&lt;").replace(/>/g, "&gt;");
     return `<!DOCTYPE html>\n<html>\n<body style="background:#1e1e1e;color:#d4d4d4;padding:20px;font-family:monospace;white-space:pre-wrap;">${code}</body>\n</html>`;
@@ -240,7 +294,23 @@ function startServer() {
         const outputs = [];
         const route = decision.route || "developer";
 
-        let needsReq = route === "requirements";
+        if (route === "clarify") {
+          const question = decision.reason || "Could you please provide more details about your request?";
+          socket.emit("node:add", createNodePayload({
+            type: "agent",
+            role: "supervisor",
+            title: "Question for Client",
+            content: question,
+          }));
+          // Add to memory and summary so it shows in chat history
+          memory.push({ role: "assistant", content: `Supervisor Question: ${question}` });
+          socket.data.memory = trimMemory(memory);
+          socket.emit("chat:done", { ok: true });
+          socket.data.isBusy = false;
+          return;
+        }
+
+        let needsReq = route === "requirements" || route === "both";
         let needsDev = route === "developer" || route === "both";
         let needsTest = route === "tester" || route === "both";
 
@@ -252,7 +322,7 @@ function startServer() {
             memory: currentMemory,
             onStep: async (step) => {
               const content = cleanOutput(step.content);
-              saveGeneratedCode(content, step.title);
+              saveGeneratedCode(step.content, step.title);
               outputs.push({ role: "requirements", title: step.title, content });
               socket.emit(
                 "node:add",
@@ -280,7 +350,7 @@ function startServer() {
 
               try {
                 if (isImplement) {
-                  const html = extractHTML(step.content);
+                  const html = sanitizeHTML(extractHTML(step.content));
                   if (html) {
                     socket.emit("app_preview", { html, label: step.title || "Implement" });
                     content = `${html.slice(0, 300)}\n\n[Full HTML — see live preview →]`;
@@ -321,7 +391,7 @@ function startServer() {
             memory: currentMemory,
             onStep: async (step) => {
               const content = cleanOutput(step.content);
-              saveGeneratedCode(content, step.title);
+              saveGeneratedCode(step.content, step.title);
               outputs.push({ role: "tester", title: step.title, content });
               socket.emit(
                 "node:add",
@@ -345,9 +415,19 @@ function startServer() {
 
         // RAG: store this session's summary into vector memory for future sessions
         try {
-          if (summary && summary.trim().length > 20) {
+          const filteredOutputs = outputs.filter(o =>
+            o && o.title && o.content && !/the\s*user\s*request\s*was\s*to/i.test(o.content)
+          );
+          const ragSummary = filteredOutputs
+            .map((o) => {
+              const isHTML = /<(!DOCTYPE|html)\b/i.test(o.content);
+              const snippet = isHTML ? "[HTML generated]" : o.content.slice(0, 120).replace(/\n/g, " ");
+              return `${o.role} / ${o.title}: ${snippet}`;
+            })
+            .join("\n");
+          if (ragSummary && ragSummary.trim().length > 20) {
             const storeId = "session-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-            await storeRAG(storeId, summary, {
+            await storeRAG(storeId, ragSummary, {
               route: route,
               input: text.slice(0, 120),
               timestamp: new Date().toISOString(),
@@ -357,6 +437,7 @@ function startServer() {
         } catch (storeErr) {
           console.warn("[RAG] store session error (non-fatal):", storeErr.message);
         }
+
 
         socket.emit("chat:done", { ok: true });
       } catch (error) {

@@ -2,11 +2,13 @@ const { callOllamaChat } = require("./ollamaClient");
 const { delay } = require("../utils/delay");
 
 const DEV_SYSTEM =
+  "Answer only if you are certain. If unsure, say 'I don't know'. Do not make up facts.\n" +
   "You are the Developer Agent in a lightweight SDLC. " +
   "Write concise, practical guidance for the requested step. " +
   "Limit to 150 words. Use plain text, no markdown.";
 
 const DEV_SYSTEM_IMPLEMENT =
+  "Answer only if you are certain. If unsure, say 'I don't know'. Do not make up facts.\n" +
   "You are the Developer Agent. Output a complete, working, single-file HTML application. " +
   "Rules you must follow strictly:\n" +
   "- Start with <!DOCTYPE html> and end with </html>. No exceptions.\n" +
@@ -19,9 +21,13 @@ const DEV_SYSTEM_IMPLEMENT =
   "- For quiz apps: store questions in a JS array of objects with question/options/answer, track score, show result at end.\n" +
   "- For notes apps: use a <textarea> + Save button, store notes in an array, render them as cards below.\n" +
   "- Aesthetics are CRITICAL: You must write beautiful, premium, modern CSS inside a <style> tag. Use sleek color palettes, smooth gradients, soft shadows, rounded corners, interactive hover effects, and modern typography (like system-ui or Inter). NEVER output a plain, basic, or ugly design, even if the user's prompt is very simple.\n" +
-  "- Do NOT use React, Vue, Angular, or any external library or CDN.\n" +
+  "- You can write logic in JavaScript OR Python. If using JavaScript, put it in a <script> tag. If using Python, you MUST use PyScript by adding <link rel='stylesheet' href='https://pyscript.net/latest/pyscript.css' /> and <script defer src='https://pyscript.net/latest/pyscript.js'></script> to the <head>, and put your Python code inside a <py-script> tag in the <body> so it runs natively in the browser.\n" +
+  "- Do NOT use React, Vue, Angular, or any external JS library. PyScript is the only allowed external script.\n" +
   "- Do NOT include markdown, explanation, or commentary. Return raw HTML only.\n" +
-  "- Do NOT truncate or cut off the output. The closing </html> tag must always be present.";
+  "- Do NOT truncate or cut off the output. The closing </html> tag must always be present.\n" +
+  "- Do NOT write any HTML comments (<!-- ... -->). No comments anywhere in the output.\n" +
+  "- Do NOT write any placeholder text such as 'end of HTML head content', 'end of body', 'rest of code here', 'add styles here', or any similar filler. Every line must be real, functional code.\n" +
+  "- Do NOT use ellipsis (...) anywhere in the output. Never abbreviate or skip code.";
 
 const DEV_STEPS = ["System Design", "Implement", "Code Review"];
 

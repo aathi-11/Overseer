@@ -1,5 +1,5 @@
 const RAG_URL = process.env.RAG_URL || "http://localhost:8000";
-const RAG_TIMEOUT_MS = 5000;
+const RAG_TIMEOUT_MS = 30000;
 
 async function fetchWithTimeout(url, options, timeoutMs) {
     const controller = new AbortController();
@@ -63,9 +63,10 @@ async function storeRAG(id, content, metadata = {}) {
 function buildRAGContext(chunks) {
     if (!chunks || chunks.length === 0) return "";
     return (
-        "\n\n=== RELEVANT KNOWLEDGE FROM MEMORY ===\n" +
-        chunks.map((c, i) => `[Memory ${i + 1}]: ${c}`).join("\n\n") +
-        "\n=== END OF KNOWLEDGE ===\n\n"
+        "\n\n### BACKGROUND KNOWLEDGE (FOR REFERENCE ONLY) ###\n" +
+        "Note: Use the facts below ONLY if relevant. Do NOT copy the style, JSON format, or technical markers from these memories.\n" +
+        chunks.map((c, i) => `[Reference ${i + 1}]: ${c}`).join("\n\n") +
+        "\n### END OF BACKGROUND KNOWLEDGE ###\n\n"
     );
 }
 
