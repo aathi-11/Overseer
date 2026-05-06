@@ -1,23 +1,23 @@
 const { callOllamaChat } = require("./ollamaClient");
 
 const SUPERVISOR_SYSTEM =
-  "Answer only if you are certain. If unsure, say 'I don't know' or use the 'clarify' route. Do not make up facts.\n" +
-  "You are a Supervisor Agent for a local SDLC simulator. " +
-  "Decide the best route for the user request using these rules:\n" +
-  "- 'developer': user wants to BUILD, CREATE, or GENERATE a specific named feature (e.g. 'calculator', 'todo app', 'login page').\n" +
-  "- 'tester': user wants tests or bug reports.\n" +
-  "- 'requirements': user wants documentation/specs.\n" +
-  "- 'both': user wants requirements and implementation.\n" +
-  "- 'clarify': Use this if the prompt is under 4 words, is a greeting, or is vague like 'make something', 'start', or 'go'. If you choose this, the 'reason' MUST be a specific question (e.g. 'What kind of application would you like me to build?').\n" +
-  "STRICT RULE: If you don't know EXACTLY what to build, you MUST choose 'clarify'. Never guess.\n" +
-  "Return JSON: {\"route\":\"requirements|developer|tester|both|clarify\",\"reason\":\"...\"}";
+  "You are a routing agent for a local SDLC simulator. " +
+  "Pick ONE route: requirements, developer, tester, both, or clarify.\n" +
+  "Use clarify if the request is under 4 words, a greeting, or unclear. " +
+  "If you choose clarify, the reason must be a specific question.\n" +
+  "Return JSON only: {\"route\":\"requirements|developer|tester|both|clarify\",\"reason\":\"...\"}.";
 
 function parseDecision(text) {
   if (!text) {
     return { route: "developer", reason: "Default route" };
   }
 
-  const match = text.match(/\{[\s\S]*\}/);
+  const cleaned = String(text)
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  const match = cleaned.match(/\{[\s\S]*\}/);
   if (match) {
     try {
       const parsed = JSON.parse(match[0]);
@@ -31,7 +31,7 @@ function parseDecision(text) {
     }
   }
 
-  const lowered = text.toLowerCase();
+  const lowered = cleaned.toLowerCase();
   const mentionsReq = lowered.includes("requirement") || lowered.includes("gather") || lowered.includes("user stor");
   const mentionsDev = lowered.includes("developer") || lowered.includes("develop") || lowered.includes("build") || lowered.includes("creat") || lowered.includes("implement") || lowered.includes("generat");
   const mentionsTest = lowered.includes("tester") || lowered.includes("test");
@@ -45,7 +45,7 @@ function parseDecision(text) {
     route = "tester";
   }
 
-  return { route, reason: text.trim().slice(0, 180) };
+  return { route, reason: cleaned.trim().slice(0, 180) };
 }
 
 async function supervisorAgent({ input, memory }) {
@@ -75,7 +75,7 @@ async function supervisorAgent({ input, memory }) {
   const response = await callOllamaChat({
     messages,
     temperature: 0.1,
-    numPredict: 120,
+    numPredict: 320,
   });
 
   return parseDecision(response);

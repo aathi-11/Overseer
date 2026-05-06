@@ -1,5 +1,5 @@
 const RAG_URL = process.env.RAG_URL || "http://localhost:8000";
-const RAG_TIMEOUT_MS = 30000;
+const RAG_TIMEOUT_MS = 60000;
 
 async function fetchWithTimeout(url, options, timeoutMs) {
     const controller = new AbortController();
@@ -37,7 +37,7 @@ async function queryRAG(query, nResults = 3) {
 async function storeRAG(id, content, metadata = {}) {
     try {
         if (!content || content.trim().length < 10) return { stored: false };
-        const MAX_LEN = 6000;
+        const MAX_LEN = 20000;
         let storeContent = content;
         if (content.length > MAX_LEN) {
             console.warn(`[RAG] content truncated from ${content.length} to ${MAX_LEN} chars for id: ${id}`);
@@ -63,10 +63,9 @@ async function storeRAG(id, content, metadata = {}) {
 function buildRAGContext(chunks) {
     if (!chunks || chunks.length === 0) return "";
     return (
-        "\n\n### BACKGROUND KNOWLEDGE (FOR REFERENCE ONLY) ###\n" +
-        "Note: Use the facts below ONLY if relevant. Do NOT copy the style, JSON format, or technical markers from these memories.\n" +
-        chunks.map((c, i) => `[Reference ${i + 1}]: ${c}`).join("\n\n") +
-        "\n### END OF BACKGROUND KNOWLEDGE ###\n\n"
+        "\n\nRelevant notes (use only if helpful):\n" +
+        chunks.map((c) => `- ${c}`).join("\n") +
+        "\n\n"
     );
 }
 

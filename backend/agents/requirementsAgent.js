@@ -32,7 +32,7 @@ async function runRequirementsWorkflow({ input, memory, onStep }) {
     const response = await callOllamaChat({
       messages: buildMessages(memory, input, step),
       temperature: 0.25,
-      numPredict: 260,
+      numPredict: 600,
     });
 
     const output = { title: step, content: response };
