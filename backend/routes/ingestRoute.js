@@ -43,10 +43,12 @@ router.post("/api/ingest", upload.single("document"), async (req, res) => {
 
     // ── Long timeout for large PDFs (10 min). Vision extraction on a
     //    200-page annual report can take several minutes on CPU.
+    const isPdf = String(file.mimetype || "").toLowerCase() === "application/pdf" ||
+      path.extname(file.originalname || "").toLowerCase() === ".pdf";
     const ragRes = await fetch("http://127.0.0.1:8000/ingest", {
       method: "POST",
       body: formData,
-      signal: AbortSignal.timeout(10 * 60 * 1000),
+      signal: isPdf ? undefined : AbortSignal.timeout(10 * 60 * 1000),
     });
 
     if (!ragRes.ok) {
@@ -138,6 +140,15 @@ router.post("/api/ingest", upload.single("document"), async (req, res) => {
 
   } catch (error) {
     console.error("Ingest error:", error);
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({
+        type: "error",
+        error: "Failed to ingest document",
+        detail: error.message,
+      })}\n\n`);
+      res.end();
+      return;
+    }
     res.status(500).json({ error: "Failed to ingest document", detail: error.message });
   } finally {
     // Always clean up temp file

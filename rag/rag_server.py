@@ -28,7 +28,7 @@ app.add_middleware(
 )
 
 chroma = chromadb.PersistentClient(path="./chroma_db")
-collection = chroma.get_or_create_collection("overseer_knowledge")
+collection = chroma.get_or_create_collection("overseer_knowledge", metadata={"hnsw:space": "cosine"})
 
 OLLAMA_BASE_URL   = "http://localhost:11434"
 OLLAMA_EMBED_URL  = f"{OLLAMA_BASE_URL}/api/embeddings"

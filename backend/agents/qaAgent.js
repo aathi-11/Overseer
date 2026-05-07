@@ -29,12 +29,12 @@ async function runQAAgent({ input, memory, docId, onStep }) {
     {
       role: "system",
       content:
-        "You are a document assistant. Answer questions using ONLY the provided context. " +
-        "Always answer in complete sentences. " +
+        "You are an expert financial document assistant. Answer questions using ONLY the provided context. " +
+        "If the user asks about revenue, tables, or financial data, provide a clear, well-structured summary. " +
+        "You may use markdown (bullet points, bold text) to make the data easy to read. " +
         "Never reply with just a date or number alone — always explain it with context from the document. " +
-        "Example: 'The highest borrowings were in 2013 (608 crores).' " +
         "If the answer is not in the context, say clearly: 'The document does not contain this information.' " +
-        "Be concise and direct. Plain text only. Max 3 sentences. No HTML. No markdown. No code blocks.",
+        "Be helpful and detailed when summarizing data.",
     },
     // Last 2 memory items — enough for one follow-up, minimal token overhead
     ...safeMemory.slice(-2),
@@ -44,12 +44,12 @@ async function runQAAgent({ input, memory, docId, onStep }) {
     },
   ];
 
-  // 3. Call Ollama — tiny token budget, deterministic temperature, no streaming
+  // 3. Call Ollama — sufficient token budget for summaries, deterministic temperature, no streaming
   const response = await callOllamaChat({
     messages,
     role: "qa",         // → gemma3:4b for richer document reasoning
     temperature: 0.1,   // Factual answers only
-    numPredict: 400,    // Enough for detailed answers on complex financial/business questions
+    numPredict: 800,    // Increased to allow for detailed summaries of revenue/tables
     stream: false,
   });
 
