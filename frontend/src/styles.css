@@ -11,9 +11,9 @@
   --shadow: 0 8px 32px rgba(31, 38, 135, 0.1);
   --node-input: #fff3c4;
   --node-decision: #dbeafe;
-  --node-requirements: #e0e7ff;
+  --node-requirements: #ffe4ee;
   --node-dev: #dcfce7;
-  --node-test: #fde2e2;
+  --node-test: #d6b59c;
 }
 
 * {
@@ -653,3 +653,7 @@ body::before {
     min-height: 420px;
   }
 }
+
+.message.qa { border-left: 3px solid #0f766e; }
+.message.qa .meta { color: #0f766e; }
+

@@ -4,6 +4,7 @@ const cors = require("cors");
 const { Server } = require("socket.io");
 const { registerChatRoutes } = require("./routes/chat");
 const { registerWorkflowHandlers } = require("./controllers/workflowController");
+const { checkModels } = require("./utils/modelCheck");
 
 const PORT = process.env.PORT || 3001;
 const DEFAULT_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
@@ -30,9 +31,12 @@ const corsOptions = {
   credentials: true,
 };
 
+const { router: ingestRouter, setIO: setIngestIO } = require("./routes/ingestRoute");
+
 function startServer() {
   const app = express();
   app.use(cors(corsOptions));
+  app.use(ingestRouter);
   registerChatRoutes(app);
 
   const server = http.createServer(app);
@@ -44,10 +48,14 @@ function startServer() {
     },
   });
 
+  // Inject io into ingest route so it can store docId on socket sessions
+  setIngestIO(io);
   registerWorkflowHandlers(io);
 
   server.listen(PORT, () => {
-    console.log(`Supervisor Agent backend running on ${PORT}`);
+    console.log(`Overseer backend running on port ${PORT}`);
+    // Non-blocking model health check — warns if any model isn't pulled
+    checkModels().catch(() => {});
   });
 }
 

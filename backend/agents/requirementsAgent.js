@@ -63,6 +63,7 @@ async function runRequirementsWorkflow({ input, memory, onStep }) {
   for (const step of REQ_STEPS) {
     const response = await callOllamaChat({
       messages: buildMessages(memory, input, step),
+      role: "requirements",
       temperature: 0.2,     // Slightly lower — requirements should be precise
       numPredict: 800,      // Increased from 600 for richer outputs
     });

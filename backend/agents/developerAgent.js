@@ -6,7 +6,7 @@
 
 const { callOllamaChat } = require("./ollamaClient");
 const { delay } = require("../utils/delay");
-const { DEV_SYSTEM, DEV_SYSTEM_IMPLEMENT } = require("../config/prompts");
+const { DEV_SYSTEM, DEV_SYSTEM_IMPLEMENT, DEV_SYSTEM_REFINE } = require("../config/prompts");
 
 const DEV_STEPS = ["System Design", "Implement", "Code Review"];
 
@@ -252,6 +252,7 @@ async function runDeveloperWorkflow({ input, rawInput, memory, onStep }) {
     const isImplement = /implement/i.test(step);
     const response = await callOllamaChat({
       messages: buildMessages({ memory, input, rawInput, step }),
+      role: "developer",
       temperature: isImplement ? 0.15 : 0.25,   // Lower temp = more deterministic code
       numPredict: isImplement ? 6000 : 700,       // 6k tokens for full HTML output
       stream: isImplement,
@@ -270,6 +271,51 @@ async function runDeveloperWorkflow({ input, rawInput, memory, onStep }) {
   return results;
 }
 
+/**
+ * Refine an existing HTML app by applying targeted changes.
+ * Does NOT rebuild from scratch — only patches what was requested.
+ *
+ * @param {string} existingHTML - The current app HTML to modify
+ * @param {string} instruction - The user's change request (e.g. "make the button red")
+ * @param {function} onStep - Callback emitted when the patch is ready
+ */
+async function refineApp({ existingHTML, instruction, onStep }) {
+  const MAX_HTML_CHARS = 12000; // Stay within context window for 3B model
+  const truncated = existingHTML.length > MAX_HTML_CHARS
+    ? existingHTML.slice(0, MAX_HTML_CHARS) + "\n<!-- truncated for context -->"
+    : existingHTML;
+
+  const messages = [
+    { role: "system", content: DEV_SYSTEM_REFINE },
+    {
+      role: "user",
+      content:
+        `Here is the existing HTML application:\n\n${truncated}\n\n` +
+        `Apply ONLY this change: "${instruction}"\n\n` +
+        `Output the complete modified HTML file from <!DOCTYPE html> to </html>. ` +
+        `Do NOT rebuild or restructure. Only apply the requested change. ` +
+        `Do NOT add any text before <!DOCTYPE html> or after </html>.`,
+    },
+  ];
+
+  const response = await callOllamaChat({
+    messages,
+    role: "developer",
+    temperature: 0.1,   // Very deterministic — we want precise surgical edits
+    numPredict: 7000,   // Full HTML must be output
+    stream: true,
+  });
+
+  const output = { title: "Refine", content: response };
+
+  if (onStep) {
+    await onStep(output);
+  }
+
+  return [output];
+}
+
 module.exports = {
   runDeveloperWorkflow,
+  refineApp,
 };

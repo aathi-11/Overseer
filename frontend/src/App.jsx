@@ -57,8 +57,8 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <div>
-          <div className="title">Supervisor Agent</div>
-          <div className="subtitle">Local SDLC canvas with agent routing</div>
+          <div className="title">Overseer</div>
+          <div className="subtitle">Autonomous SDLC agent pipeline</div>
         </div>
         <div className="badge">Ollama Local</div>
       </header>

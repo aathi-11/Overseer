@@ -12,6 +12,7 @@ const ROLE_LABELS = {
   requirements: "Requirements",
   developer: "Developer",
   tester: "Tester",
+  document: "Document Report",
 };
 
 export default function OutputPanel() {
@@ -19,10 +20,10 @@ export default function OutputPanel() {
   const [activeFilter, setActiveFilter] = useState("all");
 
   const filteredOutputs = useMemo(() => {
-    if (activeFilter === "all") {
-      return outputs;
-    }
-    return outputs.filter((output) => output.agent === activeFilter);
+    // qa answers belong in Chat only — exclude here
+    const nonQA = outputs.filter((o) => o.agent !== "qa");
+    if (activeFilter === "all") return nonQA;
+    return nonQA.filter((output) => output.agent === activeFilter);
   }, [outputs, activeFilter]);
 
   return (

@@ -5,3 +5,8 @@ dist/
 build/
 rag/chroma_db/
 generated_code/
+*.pdf
+*.csv
+__pycache__/
+.venv/
+venv/

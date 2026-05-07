@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 
-const RAG_URL = process.env.RAG_URL || "http://localhost:8000";
+const RAG_URL = process.env.RAG_URL || "http://127.0.0.1:8000";
 const RAG_TIMEOUT_MS = 60000;
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -18,16 +18,23 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 
 /**
  * Query the RAG knowledge base.
- * @param {string} query - The search query
- * @param {number} nResults - Max number of chunks to return
- * @param {object} where - Optional ChromaDB metadata filter e.g. { type: "pattern" }
+ * @param {string} query     - The search query text
+ * @param {number} nResults  - Max chunks to return (default 3)
+ * @param {object} where     - Optional ChromaDB metadata filter e.g. { type: "pattern" }
+ *                             Special key: { doc_id: "..." } scopes query to one uploaded doc.
  */
 async function queryRAG(query, nResults = 3, where = {}) {
     try {
         const body = { query, n_results: nResults };
-        if (where && Object.keys(where).length > 0) {
+
+        // doc_id is sent as a top-level field so the Python server can apply
+        // a ChromaDB $eq filter, keeping it separate from generic where filters.
+        if (where && where.doc_id) {
+            body.doc_id = where.doc_id;
+        } else if (where && Object.keys(where).length > 0) {
             body.where = where;
         }
+
         const res = await fetchWithTimeout(
             `${RAG_URL}/query`,
             {

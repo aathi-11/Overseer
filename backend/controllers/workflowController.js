@@ -3,8 +3,11 @@ const fs = require("fs");
 const path = require("path");
 const { supervisorAgent } = require("../agents/supervisorAgent");
 const { runRequirementsWorkflow } = require("../agents/requirementsAgent");
-const { runDeveloperWorkflow } = require("../agents/developerAgent");
+const { runDeveloperWorkflow, refineApp } = require("../agents/developerAgent");
 const { runTesterWorkflow } = require("../agents/testerAgent");
+const { runDocumentAgent } = require("../agents/documentAgent");
+const { runQAAgent } = require("../agents/qaAgent");
+const { buildTestReportHTML } = require("../utils/reportBuilder");
 const { queryRAG, storeRAG, buildRAGContext, checkRAGHealth } = require("../agents/ragClient");
 const {
   extractHTML,
@@ -15,7 +18,7 @@ const {
 
 const MEMORY_LIMIT = Number(process.env.MEMORY_LIMIT || 8);
 const OUTPUT_DIR = path.resolve(__dirname, "../../../generated_code");
-const VALID_ROUTES = new Set(["requirements", "developer", "tester", "both", "clarify", "gather"]);
+const VALID_ROUTES = new Set(["requirements", "developer", "tester", "both", "clarify", "gather", "refine", "document", "qa"]);
 const FALLBACK_CALCULATOR_PATH = path.resolve(__dirname, "../templates/fallback-calculator.html");
 
 const JUNK_PATTERNS = [
@@ -214,17 +217,75 @@ function registerWorkflowHandlers(io) {
   io.on("connection", (socket) => {
     socket.data.memory = [];
     socket.data.isBusy = false;
+    socket.data.lastHTML = null;   // For refine mode
+    socket.data.docId = null;      // Uploaded doc ID for Q&A
+    socket.data.hasUploadedDoc = false;
 
     socket.on("disconnect", () => {
       socket.data.memory = [];
       socket.data.isBusy = false;
+      socket.data.lastHTML = null;
+      socket.data.docId = null;
+      socket.data.hasUploadedDoc = false;
+    });
+
+    // Frontend sends this when user clicks the ✕ on the doc banner
+    socket.on("doc:clear", () => {
+      socket.data.docId = null;
+      socket.data.hasUploadedDoc = false;
+      console.log(`[doc:clear] Socket ${socket.id} cleared uploaded doc.`);
     });
 
     socket.on("chat:message", async (payload) => {
       const text = payload && payload.text ? payload.text.trim() : "";
+      const uploadedDoc = payload && payload.uploadedDoc ? payload.uploadedDoc : null;
       if (!text || socket.data.isBusy) {
         return;
       }
+
+      const BUILD_KEYWORDS = /\b(build|create|make|generate|develop|implement|code)\b/i;
+
+      // ── FAST PATH: doc uploaded → skip supervisor, canvas, RAG node entirely ───────────
+      // This eliminates ~3-8s supervisor LLM call and all canvas render overhead.
+      // Fast QA path — only if doc active AND not a build request
+      if (socket.data.hasUploadedDoc && socket.data.docId && !BUILD_KEYWORDS.test(text)) {
+        socket.data.isBusy = true;
+        socket.emit("chat:busy", { busy: true });
+        try {
+          const qaMem = socket.data.memory || [];
+          let qaAnswer = "";
+
+          await runQAAgent({
+            input: text,
+            memory: qaMem,
+            docId: socket.data.docId,
+            onStep: async ({ content }) => {
+              qaAnswer = content;
+              // Emit chat:answer — bypasses canvas/edges entirely
+              socket.emit("chat:answer", {
+                role: "qa",
+                title: "Answer",
+                content,
+              });
+            },
+          });
+
+          // Update memory with this Q&A exchange
+          socket.data.memory = trimMemory([
+            ...qaMem,
+            { role: "user", content: text },
+            { role: "assistant", content: qaAnswer },
+          ]);
+        } catch (err) {
+          console.error("[QA fast path] error:", err);
+          socket.emit("chat:error", { message: err.message });
+        } finally {
+          socket.data.isBusy = false;
+          socket.emit("chat:done", { ok: true });
+        }
+        return; // ← never reaches supervisor or any other agent
+      }
+      // ── END FAST PATH ───────────────────────────────────────────────────────
 
       socket.data.isBusy = true;
       socket.emit("chat:busy", { busy: true });
@@ -242,41 +303,70 @@ function registerWorkflowHandlers(io) {
         socket.emit("node:add", inputNode);
 
         let ragChunksFound = 0;
-        try {
-          // Query RAG for a general context node (visualisation only — supervisor stays clean)
-          const generalRag = await queryRAG(text, 2);
-          ragChunksFound = generalRag.found || 0;
-          if (ragChunksFound > 0) {
-            socket.emit("node:add", createNodePayload({
-              type: "rag",
-              role: "rag",
-              title: "RAG: " + ragChunksFound + " memory chunk" + (ragChunksFound !== 1 ? "s" : "") + " retrieved",
-              content: generalRag.chunks.map((c, i) => "[" + (i + 1) + "] " + c).join("\n\n"),
-            }));
-          } else {
-            socket.emit("node:add", createNodePayload({
-              type: "rag",
-              role: "rag",
-              title: "RAG: No memory yet",
-              content: "No relevant past context found. Agents will rely on model knowledge only.",
-            }));
+        // Skip the general RAG lookup when a document is uploaded.
+        // The global query has no doc_id filter, so it would return old session
+        // memory (e.g. compound interest test cases) instead of the uploaded file.
+        // The qaAgent runs its own targeted query scoped to socket.data.docId.
+        if (!socket.data.hasUploadedDoc) {
+          try {
+            const generalRag = await queryRAG(text, 2);
+            ragChunksFound = generalRag.found || 0;
+            if (ragChunksFound > 0) {
+              socket.emit("node:add", createNodePayload({
+                type: "rag",
+                role: "rag",
+                title: "RAG: " + ragChunksFound + " memory chunk" + (ragChunksFound !== 1 ? "s" : "") + " retrieved",
+                content: generalRag.chunks.map((c, i) => "[" + (i + 1) + "] " + c).join("\n\n"),
+              }));
+            } else {
+              socket.emit("node:add", createNodePayload({
+                type: "rag",
+                role: "rag",
+                title: "RAG: No memory yet",
+                content: "No relevant past context found. Agents will rely on model knowledge only.",
+              }));
+            }
+          } catch (ragErr) {
+            console.warn("[RAG] retrieval error (non-fatal):", ragErr.message);
           }
-        } catch (ragErr) {
-          console.warn("[RAG] retrieval error (non-fatal):", ragErr.message);
+        } else {
+          // Show a neutral node so the canvas still has a RAG lane entry
+          socket.emit("node:add", createNodePayload({
+            type: "rag",
+            role: "rag",
+            title: "RAG: Document mode",
+            content: `Skipping global memory — querying uploaded doc (${socket.data.docId || "unknown"}) directly.`,
+          }));
         }
 
-        // Supervisor gets CLEAN input — no RAG injection to avoid routing confusion
-        const decision = await supervisorAgent({ input: text, memory });
+        // Supervisor gets CLEAN input — no RAG injection to avoid routing confusion.
+        // Pass hasExistingApp so the supervisor can detect refinement requests.
+        // Pass uploadedDoc so supervisor can detect Q&A vs report-generation intent.
+        const decision = await supervisorAgent({
+          input: text,
+          memory,
+          hasExistingApp: Boolean(socket.data.lastHTML),
+          hasUploadedDoc: Boolean(socket.data.hasUploadedDoc),
+          uploadedDoc: uploadedDoc || (socket.data.hasUploadedDoc ? { docId: socket.data.docId } : null),
+        });
 
         const route = normalizeRoute(decision.route);
         const decisionReason = String(decision.reason || "Routing decision").trim();
+
+        // For gather/clarify, only show a short label in the decision node.
+        // The full question text will appear once in its own dedicated node below.
+        const decisionSummary =
+          route === "gather" ? "Gathering requirements from user before building." :
+          route === "clarify" ? "Request needs clarification before routing." :
+          decisionReason;
+
         const decisionNode = createNodePayload({
           type: "decision",
           role: "supervisor",
           title: "Supervisor Decision",
-          content: `Route: ${route}\n${decisionReason}`,
+          content: `Route: ${route}\n${decisionSummary}`,
           route,
-          reason: decisionReason,
+          reason: decisionSummary,
         });
         socket.emit("node:add", decisionNode);
 
@@ -319,11 +409,144 @@ function registerWorkflowHandlers(io) {
           return;
         }
 
+        // ── REFINE ROUTE ─────────────────────────────────────────────────────
+        // User is patching the existing generated app — not rebuilding from scratch.
+        if (route === "refine") {
+          const existingHTML = socket.data.lastHTML;
+          if (!existingHTML) {
+            // Safety: no HTML in state, fall through to build instead
+            socket.emit("node:add", createNodePayload({
+              type: "agent",
+              role: "supervisor",
+              title: "No App to Refine",
+              content: "No existing app found to refine. Please build an app first, then request changes.",
+            }));
+            socket.emit("chat:done", { ok: true });
+            socket.data.isBusy = false;
+            return;
+          }
+
+          socket.emit("node:add", createNodePayload({
+            type: "agent",
+            role: "developer",
+            title: "Refine: Patching App",
+            content: `Applying change: "${text}"`,
+          }));
+
+          await refineApp({
+            existingHTML,
+            instruction: text,
+            onStep: async (step) => {
+              let html;
+              try {
+                html = sanitizePreviewHTML(extractHTML(step.content));
+              } catch (e) { /* ignore */ }
+
+              if (html) {
+                socket.data.lastHTML = html;  // Update stored HTML with the patched version
+                socket.emit("app_preview", { html, label: "Refined" });
+                socket.emit("node:add", createNodePayload({
+                  type: "agent",
+                  role: "developer",
+                  title: "Refine: Done",
+                  content: `Change applied: "${text}"\n\n[Updated preview — see live preview panel]`,
+                }));
+              } else {
+                socket.emit("node:add", createNodePayload({
+                  type: "agent",
+                  role: "developer",
+                  title: "Refine: Could Not Parse",
+                  content: "Model did not return valid HTML. Try rephrasing the change request.",
+                }));
+              }
+            },
+          });
+
+          memory.push({ role: "user", content: text });
+          memory.push({ role: "assistant", content: `Applied change: ${text}` });
+          socket.data.memory = trimMemory(memory);
+          socket.data.lastRoute = "refine";
+          socket.emit("chat:done", { ok: true });
+          socket.data.isBusy = false;
+          return;
+        }
+
+        // Declare currentMemory once, here — used by document, qa, and all agent routes below.
+        let currentMemory = buildWorkflowMemory(memory, route, lastRoute);
+
+        // ── DOCUMENT ROUTE ─────────────────────────────────────────────────────
+        if (route === "document" && uploadedDoc) {
+          const docResults = await runDocumentAgent({
+            input: text,
+            memory: currentMemory,
+            onStep: async (step) => {
+              const content = cleanOutput(step.content);
+              outputs.push({ role: "document", title: step.title, content });
+              socket.emit(
+                "node:add",
+                createNodePayload({
+                  type: "agent",
+                  role: "requirements", // using requirements style for document node
+                  title: step.title,
+                  content,
+                })
+              );
+            },
+          });
+
+          // Build HTML report
+          const htmlReport = buildTestReportHTML(docResults, { filename: uploadedDoc.name });
+          socket.data.lastHTML = htmlReport;
+          socket.emit("app_preview", { html: htmlReport, label: "Test Report" });
+          
+          docResults.forEach((r) => {
+            currentMemory.push({ role: "assistant", content: cleanOutput(r.content) });
+          });
+          
+          memory.push({ role: "user", content: text });
+          memory.push({ role: "assistant", content: "Generated test report from uploaded document." });
+          socket.data.memory = trimMemory(memory);
+          socket.data.lastRoute = "document";
+          socket.emit("chat:done", { ok: true });
+          socket.data.isBusy = false;
+          return;
+        }
+
+        // ── QA ROUTE ───────────────────────────────────────────────────────
+        // Pure document Q&A — no HTML, no preview, no developer agent.
+        if (route === "qa") {
+          const docId = socket.data.docId ||
+            (uploadedDoc && uploadedDoc.docId) ||
+            null;
+
+          await runQAAgent({
+            input: text,
+            memory: currentMemory,
+            docId,
+            onStep: async ({ title, content }) => {
+              socket.emit("node:add", createNodePayload({
+                type: "agent",
+                role: "qa",
+                title,
+                content,
+              }));
+              currentMemory.push({ role: "assistant", content });
+            },
+          });
+
+          memory.push({ role: "user", content: text });
+          socket.data.memory = trimMemory(currentMemory);
+          socket.data.lastRoute = "qa";
+          socket.emit("chat:done", { ok: true });
+          socket.data.isBusy = false;
+          return; // ← completely skips developer, preview, tester
+        }
+
         let needsReq = route === "requirements" || route === "both";
         let needsDev = route === "developer" || route === "both";
         let needsTest = route === "tester" || route === "both";
 
-        let currentMemory = buildWorkflowMemory(memory, route, lastRoute);
+        // currentMemory already declared above — do NOT re-declare here
 
         if (needsReq) {
           // Per-agent RAG: requirements agent gets requirement patterns
@@ -385,6 +608,7 @@ function registerWorkflowHandlers(io) {
                     html = fallback || html;
                   }
                   if (html) {
+                    socket.data.lastHTML = html;  // Save for refine mode
                     socket.emit("app_preview", { html, label: step.title || "Implement" });
                     content = `${html.slice(0, 300)}\n\n[Full HTML - see live preview]`;
                   } else {

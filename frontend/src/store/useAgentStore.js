@@ -169,15 +169,47 @@ export const useAgentStore = create((set, get) => ({
       });
     });
 
+    // Fast Q&A path: answer goes directly to chat with no canvas nodes
+    socket.on("chat:answer", (payload) => {
+      if (!payload) return;
+      set((state) => ({
+        isBusy: false,
+        messages: [
+          ...state.messages,
+          {
+            id: `qa-${Date.now()}`,
+            role: payload.role || "qa",
+            title: payload.title || "Answer",
+            content: payload.content || "",
+          },
+        ],
+      }));
+    });
+
     set({ socket });
   },
-  sendMessage: (text) => {
+  sendMessage: (text, uploadedDoc = null) => {
     const socket = get().socket;
     if (!socket || !text) {
       return;
     }
-    set({ isBusy: true, lastError: null });
-    socket.emit("chat:message", { text });
+    
+    // ── Push user message to chat immediately ──
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: Date.now().toString(),
+          role: "user",
+          title: "Client Input",
+          content: text,
+        }
+      ],
+      isBusy: true, 
+      lastError: null
+    }));
+
+    socket.emit("chat:message", { text, uploadedDoc });
   },
   addNode: (payload) => {
     if (!payload || !payload.id) {

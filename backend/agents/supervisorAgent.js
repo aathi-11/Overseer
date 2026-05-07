@@ -9,7 +9,52 @@
 const { callOllamaChat } = require("./ollamaClient");
 const { SUPERVISOR_SYSTEM } = require("../config/prompts");
 
-const VALID_ROUTES = new Set(["requirements", "developer", "tester", "both", "clarify", "gather"]);
+const VALID_ROUTES = new Set(["requirements", "developer", "tester", "both", "clarify", "gather", "refine", "document", "qa"]);
+
+const DOC_KEYWORDS = /\b(report|document|analyse|analyze|summarize|review (the|my|this)|generate (a |the )?report|test results|findings)\b/i;
+
+// Detect question intent for uploaded document Q&A
+const QA_KEYWORDS = /\b(what|why|how|when|where|who|explain|tell me|summarize|list|describe|does|did|is there|are there|show me|find)\b/i;
+
+// ── Refinement intent detection ───────────────────────────────────────────────
+// Matches user follow-up instructions to patch an existing generated app.
+const REFINE_PATTERNS = [
+  /\bmake (the |it |them |all )?\w+/i,               // "make the button red"
+  /\bchange (the |a )?\w+/i,                          // "change the background"
+  /\badd (a |an |the )?\w+/i,                         // "add a dark mode"
+  /\bremove (the |a )?\w+/i,                          // "remove the footer"
+  /\bfix (the |a )?\w+/i,                             // "fix the layout"
+  /\bupdate (the |a )?\w+/i,                          // "update the title"
+  /\b(now|also|can you) (add|make|change|fix|remove|update)\b/i,
+  /\b(darker|lighter|bigger|smaller|bolder|centered|left|right|inline)\b/i,
+  /\bdark mode\b/i,
+  /\blight mode\b/i,
+  /\bresponsive\b/i,
+  /\b(font|color|colour|size|padding|margin|border|background|theme)\b/i,
+  /\buse (a |the )?\w+ (color|colour|font|style|theme|background)\b/i,
+  /\bmake it (look|feel|appear|be)\b/i,
+  /\bstyle (it|the|a)\b/i,
+];
+
+// Signals that override refinement detection → user wants a NEW app
+const NEW_BUILD_OVERRIDES = [
+  /\b(build|create|generate|develop|start|make) (a |an |the )?new\b/i,
+  /\bstart over\b/i,
+  /\bbuild (a|an) (?!more|better|cleaner)/i,
+  /\bcreate (a|an) (?!more|better|cleaner)/i,
+];
+
+/**
+ * Returns true if the user's input looks like a change to an existing app.
+ * Only meaningful when an existing HTML app is in state.
+ */
+function isRefinementRequest(input) {
+  const text = String(input || "");
+  // If user is clearly asking for a new build, don't refine
+  if (NEW_BUILD_OVERRIDES.some((p) => p.test(text))) return false;
+  // Otherwise check refinement patterns
+  return REFINE_PATTERNS.some((p) => p.test(text));
+}
 
 // ── Auto-mode detection ────────────────────────────────────────────────────────
 // If user includes any of these signals, skip requirements gathering and run fully autonomous.
@@ -47,13 +92,14 @@ function isVagueRequest(input) {
 // an answer (not a new build command), we should proceed to build.
 function wasAskedForRequirements(memory) {
   const safeMemory = Array.isArray(memory) ? memory : [];
-  // Check last 4 messages for a supervisor requirements question
+  // Check last 4 messages for a supervisor requirements question.
+  // Only the "Supervisor Question:" prefix is needed — the second keyword
+  // filter was fragile and caused false negatives.
   const recent = safeMemory.slice(-4);
   return recent.some(
     (m) =>
       m.role === "assistant" &&
-      /Supervisor Question:/i.test(m.content) &&
-      /feature|requirement|want|need|include|should|prefer|detail/i.test(m.content)
+      /Supervisor Question:/i.test(m.content)
   );
 }
 
@@ -185,7 +231,8 @@ function buildRoutingHint(input) {
     return " This is a requirements/planning request. Route MUST be 'requirements'.";
   }
   if (BUILD_KEYWORDS.test(text)) {
-    return " The user wants to BUILD something. Route MUST be 'developer'.";
+    // Route to 'gather' so requirements are collected before building
+    return " The user wants to BUILD something. Route MUST be 'gather' (not developer).";
   }
   return "";
 }
@@ -227,8 +274,29 @@ function parseDecision(text) {
 }
 
 // ── Main supervisor function ───────────────────────────────────────────────────
-async function supervisorAgent({ input, memory }) {
+async function supervisorAgent({ input, memory, hasExistingApp = false, hasUploadedDoc = false, uploadedDoc = null }) {
   const safeMemory = Array.isArray(memory) ? memory : [];
+
+  // 0a. DOCUMENT Q&A — highest priority: if a doc is loaded and user isn't vague, answer from it.
+  //     This fires BEFORE vague-check so the user doesn't get "please clarify" when asking
+  //     a question about an uploaded document.
+  if (hasUploadedDoc && !isVagueRequest(input)) {
+    // Only route to qa if it looks like a question, not a new build request
+    if (QA_KEYWORDS.test(input) || !BUILD_KEYWORDS.test(input)) {
+      return {
+        route: "qa",
+        reason: "Document is active — answering from uploaded content.",
+      };
+    }
+  }
+
+  // 0b. REFINE: if there's an existing app and the user is asking to change it
+  if (hasExistingApp && isRefinementRequest(input)) {
+    return {
+      route: "refine",
+      reason: `Refining existing app: "${input.trim()}"`,
+    };
+  }
 
   // 1. Totally vague → ask what they want
   if (isVagueRequest(input)) {
@@ -263,6 +331,14 @@ async function supervisorAgent({ input, memory }) {
   }
 
   // 4. Build intent detected → ask requirements first (interactive mode)
+  // BUT: if an uploaded doc is active and user is asking questions → route to qa
+  if (uploadedDoc && QA_KEYWORDS.test(input)) {
+    return {
+      route: "qa",
+      reason: "Answering question from uploaded document context.",
+    };
+  }
+
   if (BUILD_KEYWORDS.test(input) && !TEST_KEYWORDS.test(input) && !REQ_KEYWORDS.test(input)) {
     const question = buildRequirementsQuestion(input);
     return {
@@ -279,7 +355,15 @@ async function supervisorAgent({ input, memory }) {
     return { route: "requirements", reason: "Routing to requirements agent." };
   }
 
-  // 6. Fall back to LLM for ambiguous cases
+  // 6. Uploaded document test report generation
+  if (DOC_KEYWORDS.test(input) && uploadedDoc) {
+    return {
+      route: "document",
+      reason: "Generating structured test report from uploaded document."
+    };
+  }
+
+  // 7. Fall back to LLM for ambiguous cases
   const messages = [{ role: "system", content: SUPERVISOR_SYSTEM }];
   const recentMemory = safeMemory.slice(-4);
   messages.push(...recentMemory);
@@ -296,6 +380,7 @@ async function supervisorAgent({ input, memory }) {
 
   const response = await callOllamaChat({
     messages,
+    role: "supervisor",
     temperature: 0.05,
     numPredict: 200,
   });

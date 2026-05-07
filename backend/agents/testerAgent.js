@@ -74,6 +74,7 @@ async function runTesterWorkflow({ input, memory, onStep }) {
   for (const step of TEST_STEPS) {
     const response = await callOllamaChat({
       messages: buildMessages(memory, input, step),
+      role: "tester",
       temperature: 0.2,     // Low temp — test cases should be deterministic and specific
       numPredict: 800,      // Enough for structured test case output
     });
