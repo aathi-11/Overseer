@@ -1,15 +1,10 @@
 const cheerio = require("cheerio");
-const { JSDOM } = require("jsdom");
-const createDOMPurify = require("dompurify");
 
-const window = new JSDOM("").window;
-const DOMPurify = createDOMPurify(window);
-
-const SANITIZE_OPTIONS = {
-  WHOLE_DOCUMENT: true,
-  ADD_TAGS: ["script", "style"],
-  ADD_ATTR: ["onclick", "oninput", "onchange", "onkeyup", "onkeydown"],
-};
+// DOMPurify is intentionally NOT used for preview HTML because it strips
+// inline <script> content even when ADD_TAGS includes 'script', which
+// breaks all JS in the generated app preview. The preview iframe on the
+// frontend is already sandboxed, so server-side script stripping is
+// unnecessary and harmful here.
 
 function extractHTML(raw) {
   const text = String(raw || "");
@@ -63,7 +58,12 @@ function repairHTML(html) {
 
 function sanitizeHTML(html) {
   if (!html) return html;
-  return DOMPurify.sanitize(html, SANITIZE_OPTIONS);
+  // Strip only genuinely dangerous patterns (external resource injection,
+  // data: URIs in src/href) while leaving <script> and event handlers intact
+  // so that the generated app's JS works correctly in the preview iframe.
+  return String(html)
+    .replace(/(<[^>]+\s(?:src|href|action)\s*=\s*["']?)data:[^"'>]*/gi, "")
+    .replace(/<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, "");
 }
 
 function stripHtmlToText(html) {

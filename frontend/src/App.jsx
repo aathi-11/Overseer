@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import AgentCanvas from "./components/AgentCanvas.jsx";
 import ChatPanel from "./components/ChatPanel.jsx";
+import OutputPanel from "./components/OutputPanel.jsx";
 import { useAgentStore } from "./store/useAgentStore.js";
 
 export default function App() {
@@ -10,6 +11,7 @@ export default function App() {
   const [previewHTML, setPreviewHTML] = useState("");
   const [previewHistory, setPreviewHistory] = useState([]);
   const [activePreview, setActivePreview] = useState(-1);
+  const [activeRightPanel, setActiveRightPanel] = useState("preview");
 
   useEffect(() => {
     initSocket();
@@ -68,52 +70,91 @@ export default function App() {
           <AgentCanvas />
         </section>
         <section className="panel">
-          <div className="output-panel preview-panel">
-            <div className="preview-header chat-header">
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div className="preview-dots">
-                  <span style={{ background: "#ef4444" }} className="preview-dot" />
-                  <span style={{ background: "#f59e0b" }} className="preview-dot" />
-                  <span style={{ background: "#10b981" }} className="preview-dot" />
-                </div>
-                <div className="preview-url">agent://live-preview</div>
-              </div>
-              <div>
-                <button className="preview-save-btn output-tab" onClick={saveHTML}>
-                  ⬇ Save
-                </button>
-              </div>
+          <div className="right-panel">
+            <div className="output-tabs right-panel-tabs">
+              <button
+                type="button"
+                className={`output-tab ${activeRightPanel === "preview" ? "active" : ""}`}
+                onClick={() => setActiveRightPanel("preview")}
+              >
+                Preview
+              </button>
+              <button
+                type="button"
+                className={`output-tab ${activeRightPanel === "outputs" ? "active" : ""}`}
+                onClick={() => setActiveRightPanel("outputs")}
+              >
+                Outputs
+              </button>
             </div>
 
-            {previewHistory.length > 1 && (
-              <div className="preview-tabs output-tabs" style={{ marginBottom: 8 }}>
-                {previewHistory.map((p, i) => (
-                  <button
-                    key={i}
-                    className={`output-tab ${i === activePreview ? "active" : ""}`}
-                    onClick={() => selectVersion(i)}
-                  >
-                    {`v${previewHistory.length - i} • ${new Date(p.time).toLocaleTimeString()}`}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="right-panel-content">
+              {activeRightPanel === "preview" ? (
+                <div className="output-panel preview-panel">
+                  <div className="preview-header chat-header">
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div className="preview-dots">
+                        <span style={{ background: "#ef4444" }} className="preview-dot" />
+                        <span style={{ background: "#f59e0b" }} className="preview-dot" />
+                        <span style={{ background: "#10b981" }} className="preview-dot" />
+                      </div>
+                      <div className="preview-url">agent://live-preview</div>
+                    </div>
+                    <div>
+                      <button className="preview-save-btn output-tab" onClick={saveHTML}>
+                        Save
+                      </button>
+                    </div>
+                  </div>
 
-            <div style={{ flex: 1, minHeight: 200 }}>
-              {previewHTML ? (
-                <iframe
-                  title="app-preview"
-                  srcDoc={previewHTML}
-                  sandbox="allow-scripts allow-forms allow-modals"
-                  className="preview-iframe"
-                  style={{ width: "100%", height: "100%", border: "0", borderRadius: 12 }}
-                />
-              ) : (
-                <div className="preview-placeholder chat-empty" style={{ height: 260, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontSize: 36 }}>⚡</div>
-                  <div style={{ fontWeight: 700 }}>Your generated app will live preview here</div>
-                  <div style={{ color: "var(--ink-soft)", fontSize: 13 }}>Try: build me a task planner</div>
+                  {previewHistory.length > 1 && (
+                    <div className="preview-tabs output-tabs" style={{ marginBottom: 8 }}>
+                      {previewHistory.map((p, i) => (
+                        <button
+                          key={i}
+                          className={`output-tab ${i === activePreview ? "active" : ""}`}
+                          onClick={() => selectVersion(i)}
+                        >
+                          {`v${previewHistory.length - i} - ${new Date(p.time).toLocaleTimeString()}`}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ flex: 1, minHeight: 200 }}>
+                    {previewHTML ? (
+                      <iframe
+                        title="app-preview"
+                        srcDoc={previewHTML}
+                        sandbox="allow-scripts allow-forms allow-modals"
+                        className="preview-iframe"
+                        style={{ width: "100%", height: "100%", border: "0", borderRadius: 12 }}
+                      />
+                    ) : (
+                      <div
+                        className="preview-placeholder chat-empty"
+                        style={{
+                          height: 260,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ fontSize: 32 }}>Preview</div>
+                        <div style={{ fontWeight: 700 }}>
+                          Your generated app will live preview here
+                        </div>
+                        <div style={{ color: "var(--ink-soft)", fontSize: 13 }}>
+                          Try: build me a task planner
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
+              ) : (
+                <OutputPanel />
               )}
             </div>
           </div>

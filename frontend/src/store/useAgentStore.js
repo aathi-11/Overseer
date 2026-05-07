@@ -3,15 +3,49 @@ import { io } from "socket.io-client";
 import { applyNodeChanges } from "reactflow";
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3001";
-const LANE_X = {
-  input: 80,
-  rag: 240,
-  decision: 400,
-  requirements: 600,
-  developer: 840,
-  tester: 1080,
-};
+const LANE_ORDER = [
+  "input",
+  "rag",
+  "decision",
+  "requirements",
+  "developer",
+  "tester",
+];
 const LANE_GAP_Y = 220;
+const LANE_MIN_GAP_X = 150;
+const LANE_PADDING_X = 40;
+const APP_PADDING_X = 48;
+const PANEL_WIDTHS = 320 + 360;
+const GRID_GAPS_X = 16 * 2;
+const MOBILE_BREAKPOINT = 980;
+const DEFAULT_CANVAS_WIDTH = 900;
+
+function getCanvasWidth() {
+  if (typeof window === "undefined") {
+    return DEFAULT_CANVAS_WIDTH;
+  }
+
+  const width = window.innerWidth || DEFAULT_CANVAS_WIDTH;
+  if (width <= MOBILE_BREAKPOINT) {
+    return Math.max(width - APP_PADDING_X, 600);
+  }
+
+  const canvasWidth = width - APP_PADDING_X - PANEL_WIDTHS - GRID_GAPS_X;
+  return Math.max(canvasWidth, 600);
+}
+
+function getLaneXPositions() {
+  const width = getCanvasWidth();
+  const laneCount = LANE_ORDER.length;
+  const minWidth = LANE_MIN_GAP_X * (laneCount - 1);
+  const usable = Math.max(width - LANE_PADDING_X * 2, minWidth);
+  const gap = Math.max(LANE_MIN_GAP_X, Math.floor(usable / (laneCount - 1)));
+
+  return LANE_ORDER.reduce((acc, lane, index) => {
+    acc[lane] = LANE_PADDING_X + index * gap;
+    return acc;
+  }, {});
+}
 
 function getLane(payload) {
   if (payload.type === "input") {
@@ -66,10 +100,36 @@ export const useAgentStore = create((set, get) => ({
     developer: null,
     tester: null,
   },
-  lastAgentNodeId: null,
   lastInputId: null,
   lastDecisionId: null,
   lastRagId: null,
+  resetCanvas: () => {
+    set({
+      nodes: [],
+      edges: [],
+      messages: [],
+      agentOutputs: [],
+      laneCounts: {
+        input: 0,
+        rag: 0,
+        decision: 0,
+        requirements: 0,
+        developer: 0,
+        tester: 0,
+      },
+      lastNodeByLane: {
+        input: null,
+        rag: null,
+        decision: null,
+        requirements: null,
+        developer: null,
+        tester: null,
+      },
+      lastInputId: null,
+      lastDecisionId: null,
+      lastRagId: null,
+    });
+  },
   onNodesChange: (changes) => {
     set({
       nodes: applyNodeChanges(changes, get().nodes),
@@ -128,8 +188,9 @@ export const useAgentStore = create((set, get) => ({
       const lane = getLane(payload);
       const laneIndex = (state.laneCounts[lane] || 0) + 1;
       const nodeType = getNodeType(payload);
+      const lanePositions = getLaneXPositions();
       const position = {
-        x: LANE_X[lane],
+        x: lanePositions[lane],
         y: (laneIndex - 1) * LANE_GAP_Y + 40,
       };
 
@@ -157,7 +218,8 @@ export const useAgentStore = create((set, get) => ({
         });
       }
       if (payload.type === "agent") {
-        const sourceId = state.lastAgentNodeId || state.lastDecisionId || state.lastInputId;
+        const laneLastAgentId = state.lastNodeByLane[lane];
+        const sourceId = laneLastAgentId || state.lastDecisionId || state.lastInputId;
         if (sourceId) {
           edges.push({
             id: `e-${sourceId}-${payload.id}`,
@@ -205,8 +267,6 @@ export const useAgentStore = create((set, get) => ({
           [lane]: laneIndex,
         },
         lastNodeByLane: nextLastNodeByLane,
-        lastAgentNodeId:
-          payload.type === "agent" ? payload.id : state.lastAgentNodeId,
         lastInputId:
           payload.type === "input" ? payload.id : state.lastInputId,
         lastDecisionId:

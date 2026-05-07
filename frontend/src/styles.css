@@ -11,6 +11,7 @@
   --shadow: 0 8px 32px rgba(31, 38, 135, 0.1);
   --node-input: #fff3c4;
   --node-decision: #dbeafe;
+  --node-requirements: #e0e7ff;
   --node-dev: #dcfce7;
   --node-test: #fde2e2;
 }
@@ -121,6 +122,35 @@ body::before {
   width: 100%;
   height: 100%;
   min-height: 0;
+  position: relative;
+}
+
+.canvas-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+}
+
+.canvas-clear-btn {
+  border: 1px solid rgba(30, 26, 22, 0.16);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.canvas-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.95);
+  transform: translateY(-1px);
 }
 
 .chat-header {
@@ -371,6 +401,28 @@ body::before {
   overflow: hidden;
 }
 
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 12px;
+}
+
+.right-panel-tabs {
+  justify-content: flex-start;
+}
+
+.right-panel-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.right-panel-content > .output-panel {
+  flex: 1;
+}
+
 .preview-panel {
   display: flex;
   flex-direction: column;
@@ -567,6 +619,10 @@ body::before {
 
 .node-decision {
   background: var(--node-decision);
+}
+
+.node-requirements {
+  background: var(--node-requirements);
 }
 
 .node-developer {

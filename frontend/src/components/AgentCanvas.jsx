@@ -10,6 +10,7 @@ export default function AgentCanvas() {
   const nodes = useAgentStore((state) => state.nodes);
   const edges = useAgentStore((state) => state.edges);
   const onNodesChange = useAgentStore((state) => state.onNodesChange);
+  const resetCanvas = useAgentStore((state) => state.resetCanvas);
 
   const nodeTypes = useMemo(
     () => ({
@@ -23,6 +24,11 @@ export default function AgentCanvas() {
 
   return (
     <div className="canvas-wrap">
+      <div className="canvas-toolbar">
+        <button type="button" className="canvas-clear-btn" onClick={resetCanvas}>
+          Clear
+        </button>
+      </div>
       <ReactFlow
         nodes={nodes}
         edges={edges}

@@ -25,7 +25,7 @@ The backend currently includes these workflows:
 - **RAG Server**: Python, FastAPI, ChromaDB (Vector DB)
 - AI: Ollama via the local `/api/chat` and `/api/embeddings` endpoints
 
-The default model is `phi3`, but you can override it with environment variables.
+The default model is `qwen2.5-coder:3b`, but you can override it with environment variables.
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ If you do not already have a model, pull one before running the app:
 
 ```bash
 ollama serve
-ollama pull phi3
+ollama pull qwen2.5-coder:3b
 ollama pull nomic-embed-text
 ```
 
@@ -91,7 +91,7 @@ Backend:
 
 ```bash
 PORT=3001
-OLLAMA_MODEL=phi3
+OLLAMA_MODEL=qwen2.5-coder:7b
 OLLAMA_URL=http://localhost:11434/api/chat
 ```
 

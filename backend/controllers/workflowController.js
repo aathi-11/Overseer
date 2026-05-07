@@ -5,7 +5,7 @@ const { supervisorAgent } = require("../agents/supervisorAgent");
 const { runRequirementsWorkflow } = require("../agents/requirementsAgent");
 const { runDeveloperWorkflow } = require("../agents/developerAgent");
 const { runTesterWorkflow } = require("../agents/testerAgent");
-const { queryRAG, storeRAG, buildRAGContext } = require("../agents/ragClient");
+const { queryRAG, storeRAG, buildRAGContext, checkRAGHealth } = require("../agents/ragClient");
 const {
   extractHTML,
   repairHTML,
@@ -15,7 +15,7 @@ const {
 
 const MEMORY_LIMIT = Number(process.env.MEMORY_LIMIT || 8);
 const OUTPUT_DIR = path.resolve(__dirname, "../../../generated_code");
-const VALID_ROUTES = new Set(["requirements", "developer", "tester", "both", "clarify"]);
+const VALID_ROUTES = new Set(["requirements", "developer", "tester", "both", "clarify", "gather"]);
 const FALLBACK_CALCULATOR_PATH = path.resolve(__dirname, "../templates/fallback-calculator.html");
 
 const JUNK_PATTERNS = [
@@ -208,6 +208,8 @@ function trimMemory(memory) {
 
 function registerWorkflowHandlers(io) {
   ensureOutputDir();
+  // Check RAG health once on startup
+  checkRAGHealth();
 
   io.on("connection", (socket) => {
     socket.data.memory = [];
@@ -239,19 +241,17 @@ function registerWorkflowHandlers(io) {
         });
         socket.emit("node:add", inputNode);
 
-        let enrichedText = text;
         let ragChunksFound = 0;
         try {
-          const ragResult = await queryRAG(text, 3);
-          ragChunksFound = ragResult.found || 0;
+          // Query RAG for a general context node (visualisation only — supervisor stays clean)
+          const generalRag = await queryRAG(text, 2);
+          ragChunksFound = generalRag.found || 0;
           if (ragChunksFound > 0) {
-            const ragContext = buildRAGContext(ragResult.chunks);
-            enrichedText = ragContext + "User Request: " + text;
             socket.emit("node:add", createNodePayload({
               type: "rag",
               role: "rag",
               title: "RAG: " + ragChunksFound + " memory chunk" + (ragChunksFound !== 1 ? "s" : "") + " retrieved",
-              content: ragResult.chunks.map((c, i) => "[" + (i + 1) + "] " + c).join("\n\n"),
+              content: generalRag.chunks.map((c, i) => "[" + (i + 1) + "] " + c).join("\n\n"),
             }));
           } else {
             socket.emit("node:add", createNodePayload({
@@ -265,7 +265,9 @@ function registerWorkflowHandlers(io) {
           console.warn("[RAG] retrieval error (non-fatal):", ragErr.message);
         }
 
+        // Supervisor gets CLEAN input — no RAG injection to avoid routing confusion
         const decision = await supervisorAgent({ input: text, memory });
+
         const route = normalizeRoute(decision.route);
         const decisionReason = String(decision.reason || "Routing decision").trim();
         const decisionNode = createNodePayload({
@@ -296,6 +298,27 @@ function registerWorkflowHandlers(io) {
           return;
         }
 
+        // GATHER: Supervisor is asking the user for requirements before building.
+        // Store the question in memory so the next user reply triggers the build.
+        if (route === "gather") {
+          const question = decision.reason || "What specific features and preferences do you have for this app?";
+          socket.emit("node:add", createNodePayload({
+            type: "agent",
+            role: "supervisor",
+            title: "Requirements Gathering",
+            content: question,
+          }));
+          // Tag the message so wasAskedForRequirements() detects it on the next turn
+          memory.push({
+            role: "assistant",
+            content: `Supervisor Question: ${question}`,
+          });
+          socket.data.memory = trimMemory(memory);
+          socket.emit("chat:done", { ok: true });
+          socket.data.isBusy = false;
+          return;
+        }
+
         let needsReq = route === "requirements" || route === "both";
         let needsDev = route === "developer" || route === "both";
         let needsTest = route === "tester" || route === "both";
@@ -303,8 +326,17 @@ function registerWorkflowHandlers(io) {
         let currentMemory = buildWorkflowMemory(memory, route, lastRoute);
 
         if (needsReq) {
+          // Per-agent RAG: requirements agent gets requirement patterns
+          let reqInput = text;
+          try {
+            const reqRag = await queryRAG(text, 2, { type: "requirement" });
+            if (reqRag.found > 0) {
+              reqInput = buildRAGContext(reqRag.chunks, "requirements") + "User Request: " + text;
+            }
+          } catch (e) { /* non-fatal */ }
+
           const reqResults = await runRequirementsWorkflow({
-            input: enrichedText,
+            input: reqInput,
             memory: currentMemory,
             onStep: async (step) => {
               const content = cleanOutput(step.content);
@@ -327,8 +359,17 @@ function registerWorkflowHandlers(io) {
         }
 
         if (needsDev) {
+          // Per-agent RAG: developer agent gets code patterns
+          let devInput = text;
+          try {
+            const devRag = await queryRAG(text, 3, { type: "pattern" });
+            if (devRag.found > 0) {
+              devInput = buildRAGContext(devRag.chunks, "developer") + "User Request: " + text;
+            }
+          } catch (e) { /* non-fatal */ }
+
           const devResults = await runDeveloperWorkflow({
-            input: enrichedText,
+            input: devInput,
             rawInput: text,
             memory: currentMemory,
             onStep: async (step) => {
@@ -377,8 +418,17 @@ function registerWorkflowHandlers(io) {
         }
 
         if (needsTest) {
+          // Per-agent RAG: tester agent gets test patterns
+          let testInput = text;
+          try {
+            const testRag = await queryRAG(text, 2, { type: "test" });
+            if (testRag.found > 0) {
+              testInput = buildRAGContext(testRag.chunks, "tester") + "User Request: " + text;
+            }
+          } catch (e) { /* non-fatal */ }
+
           await runTesterWorkflow({
-            input: enrichedText,
+            input: testInput,
             memory: currentMemory,
             onStep: async (step) => {
               const content = cleanOutput(step.content);
@@ -409,29 +459,28 @@ function registerWorkflowHandlers(io) {
           const filteredOutputs = outputs.filter((o) =>
             o && o.title && o.content && !/the\s*user\s*request\s*was\s*to/i.test(o.content)
           );
-          const ragSummary = filteredOutputs
-            .map((o) => {
-              const rawContent = String(o.content || "");
-              const isHTML = /<(!DOCTYPE|html)\b/i.test(rawContent);
-              let snippet = "";
-              if (isHTML) {
-                snippet = stripHtmlToText(rawContent).slice(0, 200);
-              } else {
-                snippet = cleanOutput(rawContent).slice(0, 200).replace(/\n/g, " ");
-              }
-              if (!snippet) return null;
-              return `${o.role} / ${o.title}: ${snippet}`;
-            })
-            .filter(Boolean)
-            .join("\n");
-          if (ragSummary && ragSummary.trim().length > 20) {
+          for (const o of filteredOutputs) {
+            const rawContent = String(o.content || "");
+            const isHTML = /<!DOCTYPE|<html\b/i.test(rawContent);
+            let snippet = "";
+            if (isHTML) {
+              snippet = stripHtmlToText(rawContent).slice(0, 600);
+            } else {
+              snippet = cleanOutput(rawContent).slice(0, 600).replace(/\n/g, " ");
+            }
+            if (!snippet || snippet.trim().length < 20) continue;
+
+            const storeContent = `${o.role} / ${o.title}: ${snippet}`;
             const storeId = "session-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-            await storeRAG(storeId, ragSummary, {
-              route: route,
-              input: text.slice(0, 120),
+            await storeRAG(storeId, storeContent, {
+              route,
+              type: "session",
+              agent: o.role,
+              step: o.title,
+              input: text.slice(0, 200),
               timestamp: new Date().toISOString(),
             });
-            console.log("[RAG] stored session summary, id:", storeId);
+            console.log("[RAG] stored session output, agent:", o.role, "step:", o.title);
           }
         } catch (storeErr) {
           console.warn("[RAG] store session error (non-fatal):", storeErr.message);

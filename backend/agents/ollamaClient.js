@@ -1,6 +1,10 @@
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "phi3";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "qwen2.5-coder:3b";
 const DEFAULT_BASE_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const DEFAULT_NUM_PREDICT = 1024;
+// Force CPU-only inference: GTX 1650 has only 4 GB VRAM which is insufficient
+// for larger models. Setting num_gpu=0 bypasses CUDA entirely and uses the CPU
+// backend — slower but stable, and safe for the hardware. Using 3B for faster inference.
+const FORCE_CPU = process.env.OLLAMA_FORCE_CPU !== "false";
 
 function normalizeOllamaBaseUrl(url) {
   const trimmed = String(url || "").trim().replace(/\/+$/, "");
@@ -13,42 +17,6 @@ const OLLAMA_BASE_URL = normalizeOllamaBaseUrl(DEFAULT_BASE_URL);
 function buildOllamaUrl(path) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${OLLAMA_BASE_URL}${normalizedPath}`;
-}
-
-function insertBeforeClosing(html, closeTag, beforeTag) {
-  const beforeRegex = new RegExp(`</${beforeTag}>`, "i");
-  if (beforeRegex.test(html)) {
-    return html.replace(beforeRegex, `</${closeTag}>\n</${beforeTag}>`);
-  }
-  return `${html}\n</${closeTag}>`;
-}
-
-function repairHTML(html) {
-  if (!html) return html;
-
-  let repaired = String(html);
-  const hasDoctype = /<!doctype html>/i.test(repaired);
-  if (!hasDoctype && /<html\b/i.test(repaired)) {
-    repaired = `<!DOCTYPE html>\n${repaired}`;
-  }
-
-  if (/<script\b/i.test(repaired) && !/<\/script>/i.test(repaired)) {
-    repaired = insertBeforeClosing(repaired, "script", "body");
-  }
-  if (/<style\b/i.test(repaired) && !/<\/style>/i.test(repaired)) {
-    repaired = insertBeforeClosing(repaired, "style", "head");
-  }
-  if (/<head\b/i.test(repaired) && !/<\/head>/i.test(repaired)) {
-    repaired = insertBeforeClosing(repaired, "head", "body");
-  }
-  if (/<body\b/i.test(repaired) && !/<\/body>/i.test(repaired)) {
-    repaired = insertBeforeClosing(repaired, "body", "html");
-  }
-  if (/<html\b/i.test(repaired) && !/<\/html>/i.test(repaired)) {
-    repaired = `${repaired}\n</html>`;
-  }
-
-  return repaired;
 }
 
 async function readOllamaStream(response) {
@@ -114,6 +82,11 @@ async function callOllamaChat({
       options: {
         temperature,
         num_predict: numPredict,
+        num_ctx: 4096,
+        // num_gpu: 0 forces llama.cpp to use CPU only.
+        // Remove this (or set OLLAMA_FORCE_CPU=false) if you upgrade to
+        // a GPU with enough VRAM (>=6 GB) to run the model fully on GPU.
+        num_gpu: FORCE_CPU ? 0 : undefined,
       },
     }),
   });
@@ -135,5 +108,4 @@ async function callOllamaChat({
 
 module.exports = {
   callOllamaChat,
-  repairHTML,
 };

@@ -19,33 +19,13 @@ const ROLE_COLORS = {
   rag: "#f59e0b",
 };
 
-
-
-const AGENT_COLORS = {
-  requirements: "#2563eb",
-  developer: "#16a34a",
-  tester: "#ef4444",
-};
-
-const AGENT_NAMES = {
-  requirements: "Requirements",
-  developer: "Developer",
-  tester: "Tester",
-};
-
 export default function ChatPanel() {
   const [draft, setDraft] = useState("");
-  const [selectedTemplate, setSelectedTemplate] = useState(null);
   const messages = useAgentStore((state) => state.messages);
   const sendMessage = useAgentStore((state) => state.sendMessage);
   const isConnected = useAgentStore((state) => state.isConnected);
   const isBusy = useAgentStore((state) => state.isBusy);
   const lastError = useAgentStore((state) => state.lastError);
-
-  const handleTemplateSelect = (template) => {
-    setDraft(template.template);
-    setSelectedTemplate(template);
-  };
 
   const shouldShowInChat = (message) => {
     if (!message || !message.role) return false;
@@ -75,12 +55,6 @@ export default function ChatPanel() {
     }
   };
 
-  const handleDraftChange = (value) => {
-    setDraft(value);
-    if (selectedTemplate && !value.includes(selectedTemplate.template)) {
-      setSelectedTemplate(null);
-    }
-  };
 
   return (
     <div className="chat">
@@ -114,13 +88,9 @@ export default function ChatPanel() {
       </div>
 
       <div className="chat-input">
-
-
-
-
         <textarea
           value={draft}
-          onChange={(event) => handleDraftChange(event.target.value)}
+          onChange={(event) => setDraft(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Describe the feature, bug, or test need..."
           disabled={!isConnected || isBusy}
