@@ -269,6 +269,88 @@ def extract_pdf_chunks_pdfplumber(content: bytes, chunk_size: int = 500) -> list
     return chunks
 
 
+def extract_excel_chunks(content: bytes, rows_per_chunk: int = 5) -> list:
+    chunks = []
+    try:
+        import openpyxl
+        import io as _io
+        wb = openpyxl.load_workbook(_io.BytesIO(content), read_only=True, data_only=True)
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            headers = []
+            batch_lines = []
+            rows_seen = 0
+            for row in ws.iter_rows(values_only=True):
+                row_vals = [str(v) if v is not None else "" for v in row]
+                if not any(row_vals):
+                    continue
+                if not headers:
+                    headers = row_vals
+                    continue
+                line = " | ".join(
+                    f"{headers[i] if i < len(headers) else i}: {v}"
+                    for i, v in enumerate(row_vals)
+                )
+                batch_lines.append(line)
+                rows_seen += 1
+                if rows_seen % rows_per_chunk == 0:
+                    chunks.append(f"[Sheet: {sheet_name}]\n" + "\n".join(batch_lines))
+                    batch_lines = []
+            if batch_lines:
+                chunks.append(f"[Sheet: {sheet_name}]\n" + "\n".join(batch_lines))
+        wb.close()
+    except Exception as e:
+        logger.warning("Excel extraction failed: %s", e)
+    return chunks
+
+
+def extract_docx_chunks(content: bytes, chunk_size: int = 500) -> list:
+    chunks = []
+    try:
+        import docx
+        import io as _io
+        doc = docx.Document(_io.BytesIO(content))
+        full_text = "\n\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
+        for table in doc.tables:
+            rows = []
+            for row in table.rows:
+                rows.append(" | ".join(cell.text.strip() for cell in row.cells))
+            if rows:
+                full_text += "\n\n[Table]\n" + "\n".join(rows)
+        for i in range(0, len(full_text), chunk_size):
+            chunk = full_text[i:i + chunk_size].strip()
+            if chunk:
+                chunks.append(chunk)
+    except Exception as e:
+        logger.warning("DOCX extraction failed: %s", e)
+    return chunks
+
+
+async def extract_image_chunks(content: bytes, filename: str) -> list:
+    b64_image = base64.b64encode(content).decode("utf-8")
+    payload = {
+        "model": VISION_MODEL,
+        "prompt": (
+            f"This is an uploaded image named '{filename}'. "
+            "1. Describe everything you see in detail.\n"
+            "2. Extract any visible text or data verbatim.\n"
+            "Separate the two sections with '---'."
+        ),
+        "images": [b64_image],
+        "stream": False,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            res = await client.post(OLLAMA_GEN_URL, json=payload)
+            res.raise_for_status()
+            text = res.json().get("response", "").strip()
+            if text:
+                return [text[i:i+500] for i in range(0, len(text), 500) if text[i:i+500].strip()]
+    except Exception as e:
+        logger.warning("Image extraction failed for %s: %s", filename, e)
+    return [f"[Image: {filename}] Could not extract content."]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # INGEST ENDPOINT — with SSE progress streaming for PDFs
 # ─────────────────────────────────────────────────────────────────────────────
@@ -394,6 +476,12 @@ async def ingest_document(
                 chunks = extract_csv_chunks(content.decode("utf-8", errors="replace"))
             elif ext == "json":
                 chunks = extract_json_chunks(content.decode("utf-8", errors="replace"))
+            elif ext in ("xlsx", "xls"):
+                chunks = extract_excel_chunks(content)
+            elif ext == "docx":
+                chunks = extract_docx_chunks(content)
+            elif ext in ("png", "jpg", "jpeg", "webp", "gif"):
+                chunks = await extract_image_chunks(content, effective_filename)
             else:
                 text = content.decode("utf-8", errors="replace")
                 chunks = [text[i:i+500] for i in range(0, len(text), 500) if text[i:i+500].strip()]

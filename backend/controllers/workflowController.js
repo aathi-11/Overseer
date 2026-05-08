@@ -243,11 +243,12 @@ function registerWorkflowHandlers(io) {
         return;
       }
 
-      const BUILD_KEYWORDS = /\b(build|create|make|generate|develop|implement|code)\b/i;
+      const BUILD_KEYWORDS = /\b(build|create|make|generate|develop|implement|code|design|write)\b/i;
 
       // ── FAST PATH: doc uploaded → skip supervisor, canvas, RAG node entirely ───────────
       // This eliminates ~3-8s supervisor LLM call and all canvas render overhead.
-      // Fast QA path — only if doc active AND not a build request
+      // Fast QA path — only if doc active AND not a build/create request.
+      // If the user says "build a chart from this data", let it reach the developer agent.
       if (socket.data.hasUploadedDoc && socket.data.docId && !BUILD_KEYWORDS.test(text)) {
         socket.data.isBusy = true;
         socket.emit("chat:busy", { busy: true });
@@ -479,6 +480,7 @@ function registerWorkflowHandlers(io) {
           const docResults = await runDocumentAgent({
             input: text,
             memory: currentMemory,
+            docId: socket.data.docId || (uploadedDoc && uploadedDoc.docId) || null,
             onStep: async (step) => {
               const content = cleanOutput(step.content);
               outputs.push({ role: "document", title: step.title, content });
@@ -590,6 +592,21 @@ function registerWorkflowHandlers(io) {
               devInput = buildRAGContext(devRag.chunks, "developer") + "User Request: " + text;
             }
           } catch (e) { /* non-fatal */ }
+
+          // If a document is uploaded and user wants to build from it,
+          // fetch the doc's chunks and inject them as data context for the developer.
+          if (socket.data.hasUploadedDoc && socket.data.docId) {
+            try {
+              const docRag = await queryRAG(text, 8, { doc_id: socket.data.docId });
+              if (docRag.found > 0) {
+                const docContext =
+                  "\n\nDATA FROM UPLOADED DOCUMENT (use this as the source data for your app):\n" +
+                  docRag.chunks.join("\n\n") +
+                  "\n\n";
+                devInput = docContext + "User Request: " + text;
+              }
+            } catch (e) { /* non-fatal */ }
+          }
 
           const devResults = await runDeveloperWorkflow({
             input: devInput,

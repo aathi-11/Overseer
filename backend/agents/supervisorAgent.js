@@ -281,8 +281,11 @@ async function supervisorAgent({ input, memory, hasExistingApp = false, hasUploa
   //     This fires BEFORE vague-check so the user doesn't get "please clarify" when asking
   //     a question about an uploaded document.
   if (hasUploadedDoc && !isVagueRequest(input)) {
-    // Only route to qa if it looks like a question, not a new build request
-    if (QA_KEYWORDS.test(input) || !BUILD_KEYWORDS.test(input)) {
+    // If user wants to BUILD something using the doc as data, let it fall through
+    // to the normal developer pipeline — do NOT intercept with QA
+    if (BUILD_KEYWORDS.test(input)) {
+      // fall through intentionally
+    } else if (QA_KEYWORDS.test(input) || !BUILD_KEYWORDS.test(input)) {
       return {
         route: "qa",
         reason: "Document is active — answering from uploaded content.",

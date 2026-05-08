@@ -283,7 +283,7 @@ export default function ChatPanel() {
             {uploadLoading ? "⏳ Uploading..." : "📎 Attach File"}
             <input
               type="file"
-              accept=".pdf,.csv,.json,.txt,.md"
+              accept=".pdf,.csv,.json,.txt,.md,.xlsx,.docx,.png,.jpg,.jpeg"
               onChange={handleFileUpload}
               disabled={uploadLoading}
               style={{ display: "none" }}
@@ -303,7 +303,7 @@ export default function ChatPanel() {
           onKeyDown={handleKeyDown}
           placeholder={
             uploadedFile
-              ? `Ask a question about ${uploadedFile.name}...`
+              ? `Ask a question about ${uploadedFile.name}, or say "build a dashboard from this data"...`
               : "Describe the feature, bug, or test need..."
           }
           disabled={!isConnected || isBusy}
