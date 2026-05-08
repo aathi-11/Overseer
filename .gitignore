@@ -1,27 +1,57 @@
+# -- Dependencies -----------------------------------------------------------------
 node_modules/
-.env
-.DS_Store
-dist/
-build/
-rag/chroma_db/
-generated_code/
-*.pdf
-*.csv
-__pycache__/
 .venv/
 venv/
+
+# -- Environment variables (never commit secrets) ---------------------------------
+.env
+.env.local
+.env.*.local
+
+# -- Build outputs ----------------------------------------------------------------
+dist/
+build/
+coverage/
+.coverage
+
+# -- Uploaded files (runtime only, not source code) -------------------------------
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# -- RAG vector database (rebuilt at runtime by seed_knowledge.py) ----------------
+rag/chroma_db/
+
+# -- Generated app output (created when agents build apps) ------------------------
+generated_code/
+
+# -- Python cache -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.ipynb_checkpoints/
+
+# -- OS files ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# -- Editor files -----------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.tmp
 .cache/
 .eslintcache
-.ipynb_checkpoints/
-coverage/
-.coverage
+
+# -- Logs -------------------------------------------------------------------------
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-*.tmp
-*.swp
+
+# -- Lock files (optional -- remove these 2 lines if your team commits lock files)
+# backend/package-lock.json
+# frontend/package-lock.json
