@@ -261,15 +261,19 @@ export const useAgentStore = create((set, get) => ({
         }
       }
 
-      const messages = [
-        ...state.messages,
-        {
-          id: payload.id,
-          role: payload.role,
-          title: payload.title,
-          content: payload.content || "",
-        },
-      ];
+      // Skip re-adding user/input messages — sendMessage() already pushed them optimistically
+      const messages =
+        payload.type === "input"
+          ? state.messages
+          : [
+              ...state.messages,
+              {
+                id: payload.id,
+                role: payload.role,
+                title: payload.title,
+                content: payload.content || "",
+              },
+            ];
 
       const agentOutputs =
         payload.type === "agent"

@@ -2,13 +2,13 @@
 // Each role maps to a dedicated model so you can tune them independently
 // without touching agent code. Add the matching vars to backend/.env.
 const MODELS = {
-  default:     process.env.OLLAMA_MODEL_DEFAULT || process.env.OLLAMA_MODEL || "qwen2.5-coder:3b",
-  supervisor:  process.env.OLLAMA_MODEL_DEFAULT || process.env.OLLAMA_MODEL || "qwen2.5-coder:3b",
-  requirements:process.env.OLLAMA_MODEL_DEFAULT || process.env.OLLAMA_MODEL || "qwen2.5-coder:3b",
-  developer:   process.env.OLLAMA_MODEL_DEFAULT || process.env.OLLAMA_MODEL || "qwen2.5-coder:3b",
-  tester:      process.env.OLLAMA_MODEL_DEFAULT || process.env.OLLAMA_MODEL || "qwen2.5-coder:3b",
-  qa:          process.env.OLLAMA_MODEL_QA      || "gemma3:4b",
-  vision:      process.env.OLLAMA_MODEL_VISION  || "gemma3:4b",
+  default: process.env.OLLAMA_MODEL_DEFAULT || process.env.OLLAMA_MODEL || "qwen2.5-coder:3b",
+  supervisor: process.env.OLLAMA_MODEL_DEFAULT || process.env.OLLAMA_MODEL || "qwen2.5-coder:3b",
+  requirements: process.env.OLLAMA_MODEL_DEFAULT || process.env.OLLAMA_MODEL || "qwen2.5-coder:3b",
+  developer: process.env.OLLAMA_MODEL_DEFAULT || process.env.OLLAMA_MODEL || "qwen2.5-coder:3b",
+  tester: process.env.OLLAMA_MODEL_DEFAULT || process.env.OLLAMA_MODEL || "qwen2.5-coder:3b",
+  qa: process.env.OLLAMA_MODEL_QA || "gemma3:4b",
+  vision: process.env.OLLAMA_MODEL_VISION || "gemma3:4b",
 };
 
 const DEFAULT_BASE_URL = process.env.OLLAMA_URL || "http://localhost:11434";
@@ -80,7 +80,7 @@ async function readOllamaStream(response) {
 /**
  * Call the Ollama /api/chat endpoint.
  * @param {object} opts
- * @param {Array}  opts.messages    - Chat history in {role, content} format
+ * @param {Array}  opts.messages    - Chat history in role/content format
  * @param {string} [opts.role]      - Agent role key ('supervisor', 'developer', 'qa', etc.)
  *                                    Used to select the model from the MODELS registry.
  *                                    If both `role` and `model` are given, `model` wins.

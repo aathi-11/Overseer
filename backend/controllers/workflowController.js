@@ -310,7 +310,9 @@ function registerWorkflowHandlers(io) {
         // The qaAgent runs its own targeted query scoped to socket.data.docId.
         if (!socket.data.hasUploadedDoc) {
           try {
-            const generalRag = await queryRAG(text, 2);
+            // Filter to only past SESSION outputs — prevents uploaded doc chunks
+            // and seeded knowledge base entries from polluting the general memory context.
+            const generalRag = await queryRAG(text, 2, { type: "session" });
             ragChunksFound = generalRag.found || 0;
             if (ragChunksFound > 0) {
               socket.emit("node:add", createNodePayload({
@@ -323,8 +325,8 @@ function registerWorkflowHandlers(io) {
               socket.emit("node:add", createNodePayload({
                 type: "rag",
                 role: "rag",
-                title: "RAG: No memory yet",
-                content: "No relevant past context found. Agents will rely on model knowledge only.",
+                title: "RAG: No prior session memory",
+                content: "No relevant past session context found. Agents will rely on model knowledge only.",
               }));
             }
           } catch (ragErr) {
